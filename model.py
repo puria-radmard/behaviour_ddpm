@@ -258,7 +258,6 @@ class UnrollingDDPMReverseProcess(DDPMReverseProcessBase):
         self.ultimate_time_steps = ultimate_time_steps
         assert ultimate_time_steps >= self.num_hidden_steps
         self.recurrence_t_schedule = torch.linspace(0., 1., self.ultimate_time_steps)[:self.num_hidden_steps]   # p(x_t | x_{t+1}), only needed for t = 1,...,T-1, but not including 1, i.e. T
-
         assert list(sigma2xt_schedule.shape) == [self.num_hidden_steps]
 
     def to(self, *args, **kwargs):
