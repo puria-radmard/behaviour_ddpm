@@ -1,11 +1,13 @@
-import os
 import torch
+from torch import nn
+
+import os
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from sampling_ddpm.ddpm.utils import symmetrize_and_square_axis
-from sampling_ddpm.ddpm.model import ResidualModel, DDPMReverseProcess
+from sampling_ddpm.ddpm.model import ResidualModel, DDPMReverseProcess, InputModelBlock
 from sampling_ddpm.ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
 
 from purias_utils.util.logging import configure_logging_paths
@@ -20,13 +22,15 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 # task_name = 'simple_singleitem'
 task_name = 'simple_multiitem'
-data_generation_function, manifold_x, manifold_y, input_size, allow_mse = MANIFOLD_INFORMATION_DICTIONARY[task_name]
+data_generation_function, manifold_x, manifold_y, stimulus_shape = MANIFOLD_INFORMATION_DICTIONARY[task_name]
 
 state_space_size = 16
+time_embedding_size = 32
+stimulus_representation_size = stimulus_shape[0]
 recurrence_hidden_layers = [128, 128, 128]
 
-ultimate_sigma = 0.8
-starting_sigma = 0.05
+ultimate_sigma = 0.8 
+starting_sigma = 0.1
 num_timesteps = 100
 noise_schedule_power = 4.0
 
@@ -53,12 +57,17 @@ sigma2x_schedule = (starting_sigma + sigma2x_schedule)**noise_schedule_power
 sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 
-residual_model = ResidualModel(state_space_size, recurrence_hidden_layers, input_size)
-ddpm_model = DDPMReverseProcess(16, residual_model, sigma2x_schedule).cuda()
+input_model = InputModelBlock(stimulus_shape, stimulus_representation_size)
+residual_model = ResidualModel(state_space_size, recurrence_hidden_layers, stimulus_representation_size, time_embedding_size)
+ddpm_model = DDPMReverseProcess(16, residual_model, input_model, sigma2x_schedule, time_embedding_size).to('cuda')
+
+# ddpm_model.load_state_dict(
+#     torch.load('/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_residual_15_12_24/run_8/state_T100.mdl')
+# )
 
 
 batch_size = 2048
-num_trials = int(1e6)
+num_trials = int(1e7)
 lr = 1e-4
 
 optim = torch.optim.Adam(ddpm_model.parameters(), lr = lr)
@@ -72,7 +81,7 @@ plt.plot(ddpm_model.root_b_t_schedule.cpu().numpy(), label = 'root_b_t_schedule'
 plt.plot(ddpm_model.noise_scaler_schedule.cpu().numpy(), label = 'noise_scaler_schedule', alpha = 0.4)
 plt.plot(ddpm_model.base_samples_scaler_schedule.cpu().numpy(), label = 'base_samples_scaler_schedule', alpha = 0.4)
 plt.plot(ddpm_model.residual_scaler_schedule.cpu().numpy(), label = 'residual_scaler_schedule', alpha = 0.4)
-plt.plot(ddpm_model.mse_scaler_schedule.cpu().numpy(), label = 'mse_scaler_schedule', alpha = 0.4)
+# plt.plot(ddpm_model.mse_scaler_schedule.cpu().numpy(), label = 'mse_scaler_schedule', alpha = 0.4)
 plt.legend()
 plt.savefig(os.path.join(save_base, "sigma_schedule_unrolling.png"))
 
@@ -101,7 +110,7 @@ for t in tqdm(range(num_trials)):
         y_samples = y_samples.to(device=device, dtype = sigma2x_schedule.dtype)
 
     noised_examples = ddpm_model.noise(y_samples)
-    training_info = ddpm_model.residual(noised_examples['x_t'], input_vector = network_inputs, epsilon = noised_examples['epsilon'])
+    training_info = ddpm_model.residual(noised_examples['x_t'], network_input = network_inputs, epsilon = noised_examples['epsilon'])
     scaled_mse = training_info['scaled_mse']
 
     optim.zero_grad()
@@ -115,7 +124,7 @@ for t in tqdm(range(num_trials)):
 
         with torch.no_grad():
             novel_samples_dict= ddpm_model.generate_samples(
-                input_vector = network_inputs, samples_shape = (batch_size,)
+                network_input = network_inputs, samples_shape = (batch_size,), turn_off_noise=False
             )
             novel_samples = novel_samples_dict['behaviour_samples'].detach().cpu().numpy()
             sample_trajectory = novel_samples_dict['sample_trajectory'].detach().cpu().numpy()
@@ -129,7 +138,7 @@ for t in tqdm(range(num_trials)):
         axes[0,0].plot(manifold_x, manifold_y, alpha = 0.1, color = 'red')
         axes[0,0].set_title('y samples (ground truth)')
 
-        axes[0,1].scatter(novel_samples[:, 0], novel_samples[:, 1], alpha=0.5, s=1, c=network_input_classes)
+        axes[0,1].scatter(novel_samples[:, 0], novel_samples[:, 1], alpha=0.5, s=1)
         axes[0,1].plot(manifold_x, manifold_y, alpha = 0.1, color = 'red')
         axes[0,1].set_title('novel samples')
 

@@ -1,0 +1,27 @@
+# Model
+input_type: tabular
+state_space_size: 32
+recurrence_hidden_layers: 64, 64, 64
+time_embedding_size: 8
+
+
+# Diffusion
+ultimate_sigma: 0.8 
+starting_sigma: 0.1
+num_timesteps: 100
+noise_schedule_power: 4.0
+
+
+# Training/logging
+logging_freq: 1000
+batch_size: 2048
+num_trials: 10_000_000
+lr: 0.0001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_unified_20241224/run"
+
+
+# Task
+task_name: standard_fixed_probability_tabular
+task_config:
+  pmf: [0.7, 0.3]
+
