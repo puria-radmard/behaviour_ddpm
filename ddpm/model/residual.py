@@ -7,6 +7,8 @@ from torch import Tensor as _T
 from typing import List
 
 
+from ddpm.model.unet import UNet
+
 
 
 
@@ -34,12 +36,12 @@ class ResidualModel(nn.Module):
         
     def concatenate_with_time_and_input(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
         """
-        x of shape [..., T, layer_size]
+        x of shape [B, T, layer_size]
+        input_vector of shape [B, T, input_size]
         t_embeddings_schedule of shape [T, t_emb_size]
         """
-        reshaped_t_schedule = t_embeddings_schedule.reshape(*[1 for _ in range(len(x.shape) - 2)], *t_embeddings_schedule.shape).repeat(*x.shape[:-2], 1, 1)
-        input_vector_over_time = input_vector.unsqueeze(-2).repeat(*[1]*(len(input_vector.shape)-1), t_embeddings_schedule.shape[0], 1)
-        x_concat = torch.concat([x, reshaped_t_schedule.to(x.device, x.dtype), input_vector_over_time.to(x.device, x.dtype)], -1)
+        reshaped_t_schedule = t_embeddings_schedule.unsqueeze(0).repeat(x.shape[0], 1, 1)
+        x_concat = torch.concat([x, reshaped_t_schedule.to(x.device, x.dtype), input_vector.to(x.device, x.dtype)], -1)
         return x_concat
 
     def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
@@ -68,25 +70,28 @@ class ResidualModel(nn.Module):
     
 
 
-class DoublyConditionedResidualModel(ResidualModel):
-    """
-    Same as base model but input (estimates of) the 'final' mean as well
-    Nothing much changes if you just double the state space size
-    """
-    def __init__(self, state_space_size: int, recurrence_hidden_layers: List[int], input_size: int, time_embedding_size: int) -> None:
-        super().__init__(2 * state_space_size, recurrence_hidden_layers, input_size, time_embedding_size)
-        self.layers.append(nn.Softplus())
-        self.layers.append(nn.Linear(2 * state_space_size + self.input_size + self.time_embedding_size, state_space_size))
-        self.state_space_size = state_space_size
+class UNetResidualModel(nn.Module):
 
-    def forward(self, x: _T, final_mean: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
-        """
-        x and final_mean of shape [..., T, state_space_size]
-        t_embeddings_schedule of shape [T, time_emb_size]
-        input_vector of shape [...], passed to all
-        """
-        x_and_final_mean = torch.concat([x, final_mean], -1)
-        return super().forward(x_and_final_mean, t_embeddings_schedule, input_vector)
-    
+    def __init__(self, image_size: int, input_size: int, time_embedding_size: int, num_channels: int, base_channels: int = 64) -> None:
+        super().__init__()
+        self.image_size = image_size
+        self.input_size = input_size
+        self.time_embedding_size = time_embedding_size
+        self.num_channels = num_channels
+        self.base_channels = base_channels
 
+        total_input_vector_size = input_size + time_embedding_size
+        self.unet = UNet(
+            image_size = image_size, num_channels = num_channels, vector_dim = total_input_vector_size, base_channels = base_channels
+        )
+
+    def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
+        """
+        x of shape [B, T, image_size, image_size]
+        input_vector of shape [B, T, input_size]
+        t_embeddings_schedule of shape [T, t_emb_size]
+        """
+        reshaped_t_schedule = t_embeddings_schedule.unsqueeze(0).repeat(x.shape[0], 1, 1)
+        total_input_vector = torch.concat([input_vector, reshaped_t_schedule])
+        return self.unet(x, total_input_vector)
 

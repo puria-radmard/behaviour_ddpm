@@ -1,6 +1,32 @@
 raise Exception('reintroduce soon!')
 
 
+
+
+class DoublyConditionedResidualModel(ResidualModel):
+    """
+    Same as base model but input (estimates of) the 'final' mean as well
+    Nothing much changes if you just double the state space size
+    """
+    def __init__(self, state_space_size: int, recurrence_hidden_layers: List[int], input_size: int, time_embedding_size: int) -> None:
+        super().__init__(2 * state_space_size, recurrence_hidden_layers, input_size, time_embedding_size)
+        self.layers.append(nn.Softplus())
+        self.layers.append(nn.Linear(2 * state_space_size + self.input_size + self.time_embedding_size, state_space_size))
+        self.state_space_size = state_space_size
+
+    def forward(self, x: _T, final_mean: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
+        """
+        x and final_mean of shape [..., T, state_space_size]
+        t_embeddings_schedule of shape [T, time_emb_size]
+        input_vector of shape [...], passed to all
+        """
+        x_and_final_mean = torch.concat([x, final_mean], -1)
+        return super().forward(x_and_final_mean, t_embeddings_schedule, input_vector)
+    
+
+
+
+
 class DoublyConditionedDDPMReverseProcess(DDPMReverseProcess):
 
     def __init__(self, hidden_size: int, residual_model: ResidualModel, input_model: InputModelBlock, sigma2xt_schedule: _T, time_embedding_size: int, sample_space_size: int = 2, euler_alpha: float = 0.1) -> None:

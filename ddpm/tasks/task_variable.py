@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 
 from purias_utils.multiitem_working_memory.util.circle_utils import generate_circular_feature_list, polar2cart
 
-from sampling_ddpm.ddpm.model import DDPMReverseProcess
+from ddpm.model import DDPMReverseProcess
 
 
 def generate_clifford_torus_directions(ddpm_module: DDPMReverseProcess, N_items: int = 3):
@@ -24,7 +24,7 @@ def generate_clifford_torus_directions(ddpm_module: DDPMReverseProcess, N_items:
     }
 
 
-def generate_stimulus_features(N_items: int) -> Dict[_T]:
+def generate_stimulus_features(N_items: int) -> Dict[str, _T]:
     probe_features = generate_circular_feature_list(N_items, torch.pi / 4)
     report_features = generate_circular_feature_list(N_items, torch.pi / 4)
     return {
@@ -46,11 +46,11 @@ class TaskVariableGenerator(ABC):
     task_variable_keys: Set[str]
 
     @abstractmethod
-    def generate_variable_dict(self, *args, **kwargs) -> Dict[_T]:
+    def generate_variable_dict(self, *args, **kwargs) -> Dict[str, _T]:
         raise NotImplementedError
 
     @abstractmethod
-    def display_task_variables(self, task_variable_information: Dict[_T], *axes: Axes) -> None:
+    def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
         raise NotImplementedError
 
 
@@ -64,12 +64,12 @@ class StandardCartesianWMTaskVariableGenerator(TaskVariableGenerator, ABC):
     task_variable_keys = {'probe_features', 'report_features', 'probe_features_cart', 'report_features_cart', 'swap_probabilities'}
 
     @abstractmethod
-    def generate_probability_vectors(self, variable_dict: Dict[_T]) -> _T:
+    def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
-    def generate_variable_dict(self, num_items: int) -> Dict[_T]:
+    def generate_variable_dict(self, num_items: int) -> Dict[str, _T]:
         ret = generate_stimulus_features(self.num_items)
-        probability_vector = self.generate_probability_vectors(**ret)
+        probability_vector = self.generate_probability_vectors(ret)
         ret.update({'swap_probabilities': probability_vector})
         return ret
 
@@ -86,16 +86,18 @@ class FixedProvidedSwapProbabilityTaskVariableGenerator(StandardCartesianWMTaskV
         self.num_items = num_items
         super().__init__()
 
-    def generate_probability_vectors(self, **kwargs) -> _T:
-        import pdb; pdb.set_trace(header = 'check shapes for num items!')
+    def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
+        assert len(variable_dict['report_features']) == self.num_items
         return self.probability_vector
 
-    def display_task_variables(self, task_variable_information: Dict[_T], *axes: Axes) -> None:
+    def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
         assert len(axes) >= 1
         axes[0].set_title('Report feature values with probability of swapping to item')
         axes[0].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
-        import pdb; pdb.set_trace()
-    
+        axes[0].scatter(*task_variable_information['report_features_cart'].T, s = 50)
+        for i, prob in enumerate(task_variable_information['swap_probabilities']):
+            prob = round(prob.item(), 3)
+            axes[0].annotate(prob, (task_variable_information['report_features_cart'][i,0], task_variable_information['report_features_cart'][i,1]))
 
 class ZeroTemperatureSwapProbabilityTaskVariableGenerator(FixedProvidedSwapProbabilityTaskVariableGenerator):
     """
@@ -105,8 +107,8 @@ class ZeroTemperatureSwapProbabilityTaskVariableGenerator(FixedProvidedSwapProba
         self.num_items = num_items
         super().__init__()
 
-    def generate_probability_vectors(self, **kwargs) -> _T:
-        import pdb; pdb.set_trace(header = 'check shapes for num items!')
+    def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
+        assert len(variable_dict['report_features']) == self.num_items
         probability_vector = torch.zeros(self.num_items)
         selected_item = random.randint(self.num_items)
         probability_vector[selected_item] = 1.0

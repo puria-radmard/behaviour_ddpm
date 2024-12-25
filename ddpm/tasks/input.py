@@ -17,7 +17,7 @@ class InputGenerator(ABC):
     required_task_variable_keys: Set[str]
 
     @abstractmethod
-    def generate_network_inputs(self, variable_dict: Dict[_T]) -> _T:
+    def generate_network_inputs(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
 
@@ -33,7 +33,9 @@ class ProvidedSwapProbabilityInputGenerator(InputGenerator, ABC):
         self.num_items = num_items
         self.input_shape = (num_items * 2 + num_items,)
 
-    def generate_network_inputs(self, variable_dict: Dict[_T]) -> _T:
-        import pdb; pdb.set_trace(header = 'validate set size!')
-        import pdb; pdb.set_trace(header = 'join cartesian features with probability in correct order!')
+    def generate_network_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+        assert tuple(variable_dict['probe_features_cart'].shape) == (self.num_items, 2)
+        assert tuple(variable_dict['swap_probabilities'].shape) == (2, )
+        flattened_coords = variable_dict['probe_features_cart'].flatten()  # x1, y1, x2, y2, ...
+        report_features_and_pmfs = torch.concat([flattened_coords, variable_dict['swap_probabilities']])
         return report_features_and_pmfs

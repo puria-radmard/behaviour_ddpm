@@ -1,7 +1,7 @@
-from sampling_ddpm.ddpm.tasks.task_variable import *
-from sampling_ddpm.ddpm.tasks.input import *
-from sampling_ddpm.ddpm.tasks.sample import *
-from sampling_ddpm.ddpm.tasks.main import *
+from ddpm.tasks.task_variable import *
+from ddpm.tasks.input import *
+from ddpm.tasks.sample import *
+from ddpm.tasks.main import *
 
 
 def standard_fixed_probability_tabular(pmf: List[int]):

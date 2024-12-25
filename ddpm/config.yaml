@@ -1,8 +1,9 @@
 # Model
-input_type: tabular
-state_space_size: 32
-recurrence_hidden_layers: 64, 64, 64
-time_embedding_size: 8
+model_name: standard_tabular
+model_config:
+  state_space_size: 32
+  recurrence_hidden_layers: [64, 64, 64]
+  time_embedding_size: 8
 
 
 # Diffusion
@@ -24,4 +25,6 @@ save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_l
 task_name: standard_fixed_probability_tabular
 task_config:
   pmf: [0.7, 0.3]
+task_variables_kwargs:
+  num_items: 3
 
