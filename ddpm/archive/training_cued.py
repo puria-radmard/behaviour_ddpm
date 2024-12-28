@@ -60,7 +60,7 @@ kl_colors_scalarMap.set_array([])
 
 input_size = 2 * num_items + num_items
 input_model = InputModelBlock((input_size,), input_size)
-residual_model = ResidualModel(state_space_size, recurrence_hidden_layers, input_size, time_embedding_size)
+residual_model = VectoralResidualModel(state_space_size, recurrence_hidden_layers, input_size, time_embedding_size)
 ddpm_model = DDPMReverseProcess(state_space_size, residual_model, input_model, sigma2x_schedule, time_embedding_size).to('cuda')
 
 

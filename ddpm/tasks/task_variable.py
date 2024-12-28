@@ -12,16 +12,14 @@ from matplotlib import pyplot as plt
 
 from purias_utils.multiitem_working_memory.util.circle_utils import generate_circular_feature_list, polar2cart
 
-from ddpm.model import DDPMReverseProcess
 
-
-def generate_clifford_torus_directions(ddpm_module: DDPMReverseProcess, N_items: int = 3):
-    assert ddpm_module.linking_matrix_kernel.shape[1] - ddpm_module.linking_matrix_kernel.shape[0] == 2
-    assert N_items * 4 <= ddpm_module.linking_matrix_kernel.shape[1]
-    return {
-        'probe_directions': ddpm_module.linking_matrix_kernel[:2 * N_items],
-        'report_directions': ddpm_module.linking_matrix_kernel[2 * N_items:4 * N_items],
-    }
+# def generate_clifford_torus_directions(ddpm_module: DDPMReverseProcessBase, N_items: int = 3):
+#     assert ddpm_module.linking_matrix_kernel.shape[1] - ddpm_module.linking_matrix_kernel.shape[0] == 2
+#     assert N_items * 4 <= ddpm_module.linking_matrix_kernel.shape[1]
+#     return {
+#         'probe_directions': ddpm_module.linking_matrix_kernel[:2 * N_items],
+#         'report_directions': ddpm_module.linking_matrix_kernel[2 * N_items:4 * N_items],
+#     }
 
 
 def generate_stimulus_features(N_items: int) -> Dict[str, _T]:
@@ -45,6 +43,8 @@ class TaskVariableGenerator(ABC):
     """
     task_variable_keys: Set[str]
 
+    task_metadata = {}
+
     @abstractmethod
     def generate_variable_dict(self, *args, **kwargs) -> Dict[str, _T]:
         raise NotImplementedError
@@ -63,14 +63,17 @@ class StandardCartesianWMTaskVariableGenerator(TaskVariableGenerator, ABC):
 
     task_variable_keys = {'probe_features', 'report_features', 'probe_features_cart', 'report_features_cart', 'swap_probabilities'}
 
+    def __init__(self, num_items: int) -> None:
+        self.num_items = num_items
+
     @abstractmethod
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
-    def generate_variable_dict(self, num_items: int) -> Dict[str, _T]:
+    def generate_variable_dict(self) -> Dict[str, _T]:
         ret = generate_stimulus_features(self.num_items)
-        probability_vector = self.generate_probability_vectors(ret)
-        ret.update({'swap_probabilities': probability_vector})
+        probability_vector_task_variables = self.generate_probability_vectors(ret)
+        ret.update(probability_vector_task_variables)
         return ret
 
 
@@ -83,12 +86,11 @@ class FixedProvidedSwapProbabilityTaskVariableGenerator(StandardCartesianWMTaskV
     def __init__(self, num_items: int, probability_vector: List[float]) -> None:
         assert sum(probability_vector) == 1.0 and len(probability_vector) == num_items
         self.probability_vector = torch.tensor(probability_vector)
-        self.num_items = num_items
-        super().__init__()
+        super().__init__(num_items)
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         assert len(variable_dict['report_features']) == self.num_items
-        return self.probability_vector
+        return {'swap_probabilities': self.probability_vector}
 
     def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
         assert len(axes) >= 1
@@ -99,19 +101,42 @@ class FixedProvidedSwapProbabilityTaskVariableGenerator(StandardCartesianWMTaskV
             prob = round(prob.item(), 3)
             axes[0].annotate(prob, (task_variable_information['report_features_cart'][i,0], task_variable_information['report_features_cart'][i,1]))
 
-class ZeroTemperatureSwapProbabilityTaskVariableGenerator(FixedProvidedSwapProbabilityTaskVariableGenerator):
+
+
+class ZeroTemperatureSwapProbabilityTaskVariableGenerator(StandardCartesianWMTaskVariableGenerator):
     """
     In another simple case, each trial is dedicated to swapping to one item at a time
     """
     def __init__(self, num_items: int) -> None:
-        self.num_items = num_items
-        super().__init__()
+        super().__init__(num_items)
+        self.task_variable_keys = self.task_variable_keys.union({'cued_item_idx'})
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         assert len(variable_dict['report_features']) == self.num_items
         probability_vector = torch.zeros(self.num_items)
-        selected_item = random.randint(self.num_items)
+        selected_item = random.randint(0, self.num_items - 1)
         probability_vector[selected_item] = 1.0
-        return probability_vector
+        return {'swap_probabilities': probability_vector, 'cued_item_idx': selected_item}
     
-    
+    def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
+        assert len(axes) >= 1
+        axes[0].set_title('Report feature values\nwith probability of swapping to item')
+        axes[0].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
+        axes[0].scatter(*task_variable_information['report_features_cart'].T, s = 50)
+        for i, prob in enumerate(task_variable_information['swap_probabilities']):
+            prob = round(prob.item(), 3)
+            axes[0].annotate(prob, (task_variable_information['report_features_cart'][i,0], task_variable_information['report_features_cart'][i,1]))
+            if i == task_variable_information['cued_item_idx']:
+                axes[0].add_patch(plt.Circle(task_variable_information['report_features_cart'][i].T.tolist(), 0.1, color='green', fill = False))
+
+        axes[1].set_title('Probe feature values\nwith probability of swapping to item')
+        axes[1].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
+        axes[1].scatter(*task_variable_information['probe_features_cart'].T, s = 50)
+        for i, prob in enumerate(task_variable_information['swap_probabilities']):
+            prob = round(prob.item(), 3)
+            axes[1].annotate(prob, (task_variable_information['probe_features_cart'][i,0], task_variable_information['probe_features_cart'][i,1]))
+            if i == task_variable_information['cued_item_idx']:
+                axes[1].add_patch(plt.Circle(task_variable_information['probe_features_cart'][i].T.tolist(), 0.1, color='green', fill = False))
+
+
+

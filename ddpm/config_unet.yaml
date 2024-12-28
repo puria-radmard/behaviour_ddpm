@@ -1,0 +1,27 @@
+# Model
+model_name: standard_vectoral_in_images_out
+model_config:
+  base_unet_channels: 8
+  time_embedding_size: 128
+
+
+# Diffusion
+ultimate_sigma2: 0.15
+starting_sigma2: 0.01
+num_timesteps: 400
+
+
+# Training/logging
+logging_freq: 200
+batch_size: 32
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_unified_20241224_unet/run"
+
+
+# Task
+task_name: standard_fixed_probability_vectoral_strip_image_in
+task_config:
+  pmf: [1.0]
+  image_size: 32
+  strip_pixel_width: 6

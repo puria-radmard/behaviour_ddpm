@@ -5,23 +5,25 @@ from abc import ABC, abstractmethod
 from typing import Dict, Set, List
 
 
-class InputGenerator(ABC):
+class SensoryGenerator(ABC):
     """
-    Can generate inputs as tabular data or as image inputs
+    Can generate sensory inputs as vectoral data or as images
 
-    Inputs are tensor with shape [... self.input_shape]
+    Outputs are tensor with shape [... self.sensory_shape]
     
     XXX images only really works with time varying case!
     """
-    input_shape: List[int]
+    sensory_shape: List[int]
     required_task_variable_keys: Set[str]
 
+    task_metadata = {}
+
     @abstractmethod
-    def generate_network_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+    def generate_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
 
-class ProvidedSwapProbabilityInputGenerator(InputGenerator, ABC):
+class ProvidedSwapProbabilitySensoryGenerator(SensoryGenerator):
     """
     Simplest task - directly tells the network how often to swap to each item
     Therefore only provides the report dimension as cartesian --> input size of [..., N * 2 + N]
@@ -31,11 +33,57 @@ class ProvidedSwapProbabilityInputGenerator(InputGenerator, ABC):
 
     def __init__(self, num_items: int) -> None:
         self.num_items = num_items
-        self.input_shape = (num_items * 2 + num_items,)
+        self.sensory_shape = (num_items * 2 + num_items,)
 
-    def generate_network_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+    def generate_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
         assert tuple(variable_dict['probe_features_cart'].shape) == (self.num_items, 2)
-        assert tuple(variable_dict['swap_probabilities'].shape) == (2, )
-        flattened_coords = variable_dict['probe_features_cart'].flatten()  # x1, y1, x2, y2, ...
+        assert tuple(variable_dict['swap_probabilities'].shape) == (self.num_items, )
+        flattened_coords = variable_dict['report_features_cart'].flatten()  # x1, y1, x2, y2, ...
         report_features_and_pmfs = torch.concat([flattened_coords, variable_dict['swap_probabilities']])
         return report_features_and_pmfs
+
+
+class IndexCuingSensoryGenerator(SensoryGenerator):
+    """
+    Second simplest task - give only the recall dimensions, and the item which is cued
+
+    This part of the pipeline has no awareness of swap_probabilities - that needs to be tuned in sample.py
+    """
+
+    required_task_variable_keys = {'report_features_cart', 'cued_item_idx'}
+
+    def __init__(self, num_items: int) -> None:
+        self.num_items = num_items
+        self.sensory_shape = (num_items * 2 + num_items,)
+    
+    def generate_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+        assert tuple(variable_dict['probe_features_cart'].shape) == (self.num_items, 2)
+        flattened_coords = variable_dict['report_features_cart'].flatten()  # x1, y1, x2, y2, ...
+        item_cued_ohe = torch.nn.functional.one_hot(torch.tensor(variable_dict['cued_item_idx']), num_classes=self.num_items)
+        report_features_and_index = torch.concat([flattened_coords, item_cued_ohe])
+        return report_features_and_index
+
+
+
+
+class ProbeCuingSensoryGenerator(SensoryGenerator):
+    """
+    Almost the full WM task now - give both dimensions, and 
+
+    This part of the pipeline has no awareness of swap_probabilities - that needs to be tuned in sample.py
+    """
+
+    required_task_variable_keys = {'report_features_cart', 'probe_features_cart', 'cued_item_idx'}
+
+    def __init__(self, num_items: int) -> None:
+        self.num_items = num_items
+        self.sensory_shape = (num_items * 4 + 2,)
+    
+    def generate_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+        assert tuple(variable_dict['probe_features_cart'].shape) == (self.num_items, 2)
+        flattened_coords = variable_dict['report_features_cart'].flatten()  # x1, y1, x2, y2, ...
+        flattened_probe_coords = variable_dict['probe_features_cart'].flatten()  # x1, y1, x2, y2, ...
+        selected_probe_coords = flattened_probe_coords[2 * variable_dict['cued_item_idx']: 2 * variable_dict['cued_item_idx'] + 2]
+        report_features_and_index = torch.concat([flattened_coords, flattened_probe_coords, selected_probe_coords])
+        return report_features_and_index
+

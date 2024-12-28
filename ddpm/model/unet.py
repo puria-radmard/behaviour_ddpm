@@ -9,6 +9,10 @@ import torch.nn as nn
 from torch import Tensor as _T
 import torch.nn.functional as F
 
+from functools import partial
+
+from torch import vmap
+
 
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -39,6 +43,8 @@ class UNet(nn.Module):
             vector_dim: Dimension of additional vector input to be concatenated after bridge
         """
         super().__init__()
+
+        self.image_shape = (num_channels, image_size, image_size)
         
         # Calculate channel sizes based on base_channels
         c1 = base_channels
@@ -81,22 +87,30 @@ class UNet(nn.Module):
         
         # Final convolution
         self.final_conv = nn.Conv2d(c1, num_channels, kernel_size=1)
+
+        self.float()
         
         # Input size check
         if image_size % 16 != 0:
             raise ValueError("Image size must be divisible by 16 for proper UNet operation")
-    
+
     def forward(self, x: _T, vector_input: _T) -> _T:
         """
         Forward pass through the UNet.
         
         Args:
-            x: Input tensor of shape [batch_size, num_channels, image_size, image_size]
-            vector_input: vector input of shape [batch_size, vector_dim]
+            x: Input tensor of shape [batch_size, T, num_channels, image_size, image_size]
+            vector_input: vector input of shape [batch_size, T, vector_dim]
             
         Returns:
-            torch.Tensor: Output tensor of shape [batch_size, num_channels, image_size, image_size]
+            torch.Tensor: Output tensor of shape [batch_size, T, num_channels, image_size, image_size]
         """
+
+        batch_size, timesteps = x.shape[:2]
+        x = x.reshape(batch_size * timesteps, *self.image_shape).float()
+
+        # x == x.reshape(batch_size * timesteps, *self.image_shape).reshape(batch_size, timesteps, *self.image_shape)
+        
         # Encoder
         enc1 = self.enc1(x)
         x = F.max_pool2d(enc1, 2)
@@ -137,6 +151,8 @@ class UNet(nn.Module):
         
         # Final convolution
         x = self.final_conv(x)
+
+        x = x.reshape(batch_size, timesteps, *self.image_shape)
         
         return x
     

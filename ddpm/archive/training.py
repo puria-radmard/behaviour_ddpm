@@ -7,7 +7,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from sampling_ddpm.ddpm.utils import symmetrize_and_square_axis
-from sampling_ddpm.ddpm.model import ResidualModel, DDPMReverseProcess, InputModelBlock
+from sampling_ddpm.ddpm.model import VectoralResidualModel, DDPMReverseProcess, InputModelBlock
 from sampling_ddpm.ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
 
 from purias_utils.util.logging import configure_logging_paths
@@ -58,7 +58,7 @@ sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 
 input_model = InputModelBlock(stimulus_shape, stimulus_representation_size)
-residual_model = ResidualModel(state_space_size, recurrence_hidden_layers, stimulus_representation_size, time_embedding_size)
+residual_model = VectoralResidualModel(state_space_size, recurrence_hidden_layers, stimulus_representation_size, time_embedding_size)
 ddpm_model = DDPMReverseProcess(16, residual_model, input_model, sigma2x_schedule, time_embedding_size).to('cuda')
 
 # ddpm_model.load_state_dict(

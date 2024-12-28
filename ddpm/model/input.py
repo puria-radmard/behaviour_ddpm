@@ -9,16 +9,16 @@ from typing import Tuple
 
 class InputModelBlock(nn.Module):
     """
-    Takes in structured input and outputs the same thing
+    Sensory input (structured) --> input to residual network (always vectoral)
     """
 
-    def __init__(self, input_shape: Tuple[int], output_shape: int, *args, **kwargs) -> None:
-        self.input_shape = input_shape
-        self.output_shape = output_shape
-        assert self.output_shape == self.input_shape
-        super().__init__(*args, **kwargs)
+    def __init__(self, sensory_shape: Tuple[int], network_input_size: int, device: str) -> None:
+        self.sensory_shape = sensory_shape
+        self.network_input_size = network_input_size
+        self.device = device
+        super().__init__()
     
     def forward(self, x: _T) -> _T:
-        assert tuple(x.shape[-len(self.input_shape):]) == self.input_shape, f"Expected inputs ending with shape {self.input_shape}, got shape {x.shape}"
-        return x
+        assert tuple(x.shape[-len(self.sensory_shape):]) == self.sensory_shape, f"Expected inputs ending with shape {self.sensory_shape}, got shape {x.shape}"
+        return x.to(self.device)
 

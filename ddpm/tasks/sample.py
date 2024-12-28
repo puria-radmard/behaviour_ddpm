@@ -3,6 +3,7 @@ from typing import Dict, Set, List, Tuple, Deque, Optional, Union
 from matplotlib.pyplot import Axes
 
 from matplotlib import pyplot as plt
+from matplotlib.cm import ScalarMappable
 
 import math
 import torch
@@ -23,7 +24,7 @@ class SwapSampleInformation:
 
 class ExampleSampleGenerator(ABC):
     """
-    Can generate inputs as tabular data or as target samples
+    Can generate inputs as vectoral data or as target samples
 
     Samples are tensor with shape [num_samples, *self.sample_shape], indexed by 'samples'
     Also output some sample metadata
@@ -34,10 +35,14 @@ class ExampleSampleGenerator(ABC):
     See child class docstrings for specific examples
 
     Similarly, needs to be able to display (some) example samples
+
+    Finally, also handles the residual loss, which is just standard, unscaled MSE in most cases
     """
     sample_shape: List[int]
     required_task_variable_keys: Set[str]
     diagnostics_memory = 100
+    
+    task_metadata = {}
 
     @abstractmethod
     def generate_sample_set(self, num_samples: int, variable_dict: Dict[str, _T]) -> SwapSampleInformation:
@@ -51,8 +56,20 @@ class ExampleSampleGenerator(ABC):
     def display_samples(self, sample_set: Union[SwapSampleInformation, _T], axes: Axes) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def display_early_x0_pred_timeseries(self, sample_set: _T, axes: Axes) -> None:
+        raise NotImplementedError
+    
+    def mse(self, epsilon_hat: _T, epsilon: _T):
+        assert epsilon.shape == epsilon_hat.shape
+        batch_size, T = epsilon_hat.shape[:2]
+        mse = torch.square(epsilon_hat - epsilon).reshape(batch_size, T, -1).mean(-1)   # [..., T]
+        # scaled_mse = self.mse_scaler_schedule[*[None]*extra_dims] * mse[...,1:] # [..., T-1]
+        return mse
 
-class TabularExampleSampleGenerator(ExampleSampleGenerator):
+
+
+class VectoralExampleSampleGenerator(ExampleSampleGenerator):
     """
     Just generates Cartesian samples (on a point)
 
@@ -60,16 +77,45 @@ class TabularExampleSampleGenerator(ExampleSampleGenerator):
     Only diagnostic is that magnitude of output samples ~= 1
     """
     required_task_variable_keys = {'report_features_cart', 'swap_probabilities'}
-    sample_shape = [2]
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, sample_size: int, sample_radius: float, residual_in_behaviour_plane_only: bool, device = 'cuda') -> None:
+        
+        self.sample_shape = [sample_size]
+        sample_space_size = 2
+        self.sample_radius = sample_radius
+        self.residual_in_behaviour_plane_only = residual_in_behaviour_plane_only
+        
+        if sample_size == sample_space_size:
+            self.linking_matrix = torch.eye(sample_size).cpu().numpy()   # [dim y, dim x]
+            self.linking_matrix_kernel = torch.tensor([]).cpu().numpy()   # []
+            self.rotation_matrix = torch.eye(sample_size).cpu().numpy()   # []
+        elif sample_size > sample_space_size:
+            gaus = torch.randn(sample_size, sample_size)
+            svd = torch.linalg.svd(gaus)
+            orth = svd[0] @ svd[2]
+            self.linking_matrix = orth[:sample_space_size].cpu().numpy()   # [dim y, dim x]
+            self.linking_matrix_kernel = orth[sample_space_size:].cpu().numpy()   # [dim x - dim y, dim x]
+            self.rotation_matrix = orth.cpu().numpy()   # [dim x, dim x]
+        else:
+            raise NotImplementedError
+        
+        self.linking_matrix_mse = torch.tensor(self.linking_matrix).to(device)
+
+        self.task_metadata = {
+            'linking_matrix': self.linking_matrix,
+            'linking_matrix_kernel': self.linking_matrix_kernel,
+            'rotation_matrix': self.rotation_matrix,
+            'sample_radius': sample_radius,
+            'residual_in_behaviour_plane_only': residual_in_behaviour_plane_only
+        }
 
     def generate_sample_set(self, num_samples: int, variable_dict: Dict[str, _T]) -> SwapSampleInformation:
         selection_pmf = variable_dict['swap_probabilities']
         selected_item_idx = torch.tensor(np.random.choice(selection_pmf.shape[0], size = num_samples, replace = True, p = selection_pmf))
         selected_cartesian = variable_dict['report_features_cart'][selected_item_idx] 
+        selected_cartesian = selected_cartesian @ self.linking_matrix
         selected_cartesian = selected_cartesian + torch.randn_like(selected_cartesian) * 0.05
+        selected_cartesian = selected_cartesian * self.sample_radius
         return SwapSampleInformation(selected_cartesian, selected_item_idx)
 
     def generate_sample_diagnostics(self, sample_set: _T, variable_dict: Dict[str, _T]) -> Tuple[_T, Dict[str, _T]]:
@@ -78,11 +124,31 @@ class TabularExampleSampleGenerator(ExampleSampleGenerator):
 
     def display_samples(self, sample_set: Union[SwapSampleInformation, _T], axes: Axes) -> None:
         if isinstance(sample_set, SwapSampleInformation):
-            axes.scatter(sample_set.sample_set[:, 0], sample_set.sample_set[:, 1], c = sample_set.item_indices, alpha=0.5, s=1)
+            samples = sample_set.sample_set @ self.linking_matrix.T
+            c = sample_set.item_indices
         else:
-            sample_set = sample_set.cpu().numpy()
-            axes.scatter(sample_set[:, 0], sample_set[:, 1], alpha=0.5, s=1)
-        axes.add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
+            samples = sample_set.cpu().numpy() @ self.linking_matrix.T
+            c = None
+        axes.scatter(samples[:, 0], samples[:, 1], alpha=0.5, s=1, c=c)
+        axes.add_patch(plt.Circle((0, 0), self.sample_radius, color='red', fill = False))
+    
+    def display_early_x0_pred_timeseries(self, early_preds_set: _T, axes: Axes, cmap: ScalarMappable) -> None:
+        """
+        early_preds_set of shape [B, T, <dim x>] but in reversed order (i.e. T --> 1)
+        """
+        T = early_preds_set.shape[1]
+        for h in range(T):
+            if T % 10 == 0:
+                color = cmap.to_rgba(T - h)
+                timestep_preds = early_preds_set[:,h,:] @ self.linking_matrix.T
+                axes.scatter(timestep_preds[:, 0], timestep_preds[:, 1], alpha=0.5, s=1, c=color)
+        axes.add_patch(plt.Circle((0, 0), self.sample_radius, color='red', fill = False))
+    
+    def mse(self, epsilon_hat: _T, epsilon: _T):
+        if self.residual_in_behaviour_plane_only:
+            epsilon = epsilon @ self.linking_matrix_mse.T
+            epsilon_hat = epsilon_hat @ self.linking_matrix_mse.T
+        return super().mse(epsilon_hat, epsilon)
 
 
 
@@ -95,8 +161,8 @@ class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
 
     required_task_variable_keys = {'report_features', 'swap_probabilities'}
 
-    def __init__(self, image_size: int = 256, strip_pixel_width: int = 20) -> None:
-        self.sample_shape = [image_size, image_size]
+    def __init__(self, image_size: int, strip_pixel_width: int) -> None:
+        self.sample_shape = [1, image_size, image_size]
         self.strip_pixel_width = strip_pixel_width
 
     @staticmethod
@@ -113,7 +179,7 @@ class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
                             (0 = horizontal right, π/2 = vertical up)
         
         Returns:
-            torch.Tensor: Image tensor of shape [batch_size, image_size, image_size] 
+            torch.Tensor: Image tensor of shape [batch_size, 1, image_size, image_size] 
                         with values 1.0 in strips, -1.0 elsewhere
         """
         batch_size = selected_item_ang.shape[0]
@@ -128,15 +194,17 @@ class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
         
         # Center the coordinates
         x_centered = x_coords - image_size // 2
-        y_centered = y_coords - image_size // 2
+        y_centered = - (y_coords - image_size // 2)
         
         # Calculate the angle of each pixel relative to center
-        angles = torch.atan2(y_centered, x_coords - image_size // 2)
+        angles = torch.atan2(y_centered, x_centered)
         
         # Normalize angles to be between 0 and 2π
         angles = (angles + 2 * math.pi) % (2 * math.pi)
         
         # Normalize selected angles and reshape for broadcasting
+        selected_item_ang = selected_item_ang * 0.0 + 1.0
+
         selected_item_ang = (selected_item_ang + 2 * math.pi) % (2 * math.pi)
         selected_item_ang = selected_item_ang.view(batch_size, 1, 1)
         
@@ -152,18 +220,19 @@ class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
         angular_width = strip_pixel_width / radii
         
         # Create the batched images: 1.0 where angle difference is within strip width, -1.0 elsewhere
-        images = torch.where(angle_diff <= angular_width.unsqueeze(0)/2, 1.0, -1.0)
-        
-        return images
+        positive_where = torch.logical_and((angle_diff <= angular_width.unsqueeze(0)/2), radii > strip_pixel_width)
+        images = torch.where(positive_where, 1.0, -1.0)
+
+        return images.unsqueeze(1)
 
     def generate_sample_set(self, num_samples: int, variable_dict: Dict[str, _T]) -> SwapSampleInformation:
         selection_pmf = variable_dict['swap_probabilities']
         selected_item_idx = torch.tensor(np.random.choice(selection_pmf.shape[0], size = num_samples, replace = True, p = selection_pmf))
         selected_item_ang = torch.tensor(variable_dict['report_features'])[selected_item_idx]
 
-        noise_offset = self.generate_strip_image(image_size=self.sample_shape[0], strip_pixel_width=self.strip_pixel_width, selected_item_ang=selected_item_ang)
+        noise_offset = self.generate_strip_image(image_size=self.sample_shape[-1], strip_pixel_width=self.strip_pixel_width, selected_item_ang=selected_item_ang)
         
-        white_noise_images = noise_offset + torch.randn_like(noise_offset)
+        white_noise_images = (noise_offset * 0.5) + (torch.randn_like(noise_offset) * 0.15)
         return SwapSampleInformation(white_noise_images, selected_item_idx)
 
     def generate_sample_diagnostics(self, sample_set: _T, variable_dict: Dict[str, _T]) -> Tuple[_T, Dict[str, _T]]:
@@ -172,6 +241,25 @@ class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
 
     def display_samples(self, sample_set: Union[SwapSampleInformation, _T], axes: Axes) -> None:
         if isinstance(sample_set, SwapSampleInformation):
-            axes.imshow(sample_set.sample_set[0].cpu().numpy(), cmap = 'grey', vmin = -4.5, vmax = + 4.5)
+            samples = sample_set.sample_set[0].permute(1, 2, 0).cpu().numpy()
         else:
-            axes.imshow(sample_set[0].cpu().numpy(), cmap = 'grey', vmin = -4.5, vmax = + 4.5)
+            samples = sample_set[0].permute(1, 2, 0).cpu().numpy()
+        extent=[-samples.shape[1]/2., samples.shape[1]/2., -samples.shape[0]/2., samples.shape[0]/2. ]
+        # axes.imshow(samples, cmap = 'grey', vmin = -1.0, vmax = +1.0, extent = extent)
+        axes.imshow(samples, cmap = 'grey', extent = extent)
+    
+    def display_early_x0_pred_timeseries(self, sample_set: _T, axes: Axes, cmap: ScalarMappable) -> None:
+        T = sample_set.shape[1]
+        chosen_sample_indices = [0, T // 4, T // 2, (3 * T // 4)]
+        chosen_sample_extents = [
+            (-sample_set.shape[-1], 0, 0, sample_set.shape[-1]), # top left
+            (0, sample_set.shape[-1], 0, sample_set.shape[-1]), # top right
+            (-sample_set.shape[-1], 0, -sample_set.shape[-1], 0), # bottom left
+            (0, sample_set.shape[-1], -sample_set.shape[-1], 0), # bottom right
+        ]
+        for cs_idx, cs_ext in zip(chosen_sample_indices, chosen_sample_extents):
+            # axes.imshow(sample_set[0,cs_idx,0], cmap = 'grey', vmin = -4.5, vmax = + 4.5, extent = cs_ext)
+            axes.imshow(sample_set[0,cs_idx,0], cmap = 'grey', extent = cs_ext)
+            axes.scatter([cs_ext[0] + 2], [cs_ext[-1] - 2], color = cmap.to_rgba(T - cs_idx), s = 20)
+        axes.plot([-sample_set.shape[-1], sample_set.shape[-1]], [0., 0.], color = 'red')
+        axes.plot([0., 0.], [-sample_set.shape[-1], sample_set.shape[-1]], color = 'red')

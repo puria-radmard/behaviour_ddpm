@@ -2,10 +2,12 @@ from torch import Tensor as _T
 
 from typing import Dict
 
+import numpy as np
+
 from dataclasses import dataclass
 
 from ddpm.tasks.task_variable import TaskVariableGenerator
-from ddpm.tasks.input import InputGenerator
+from ddpm.tasks.input import SensoryGenerator
 from ddpm.tasks.sample import ExampleSampleGenerator, SwapSampleInformation
 
 
@@ -18,18 +20,30 @@ class TrialInformation:
 
 class WMDiffusionTask:
 
-    def __init__(self, task_variable_gen: TaskVariableGenerator, input_gen: InputGenerator, sample_gen: ExampleSampleGenerator) -> None:
+    def __init__(self, task_variable_gen: TaskVariableGenerator, sensory_gen: SensoryGenerator, sample_gen: ExampleSampleGenerator) -> None:
         
         self.task_variable_gen = task_variable_gen
-        self.input_gen = input_gen
+        self.sensory_gen = sensory_gen
         self.sample_gen = sample_gen
 
-        assert input_gen.required_task_variable_keys.issubset(task_variable_gen.task_variable_keys)
+        self.task_metadata: Dict[str, Dict]  = {
+            'task_variable_gen_metadata': task_variable_gen.task_metadata,
+            'sensory_gen': sensory_gen.task_metadata,
+            'sample_gen': sample_gen.task_metadata,
+        }
+
+        assert sensory_gen.required_task_variable_keys.issubset(task_variable_gen.task_variable_keys)
         assert sample_gen.required_task_variable_keys.issubset(task_variable_gen.task_variable_keys)
     
     def generate_trial_information(self, num_samples: int, **task_variables_kwargs) -> TrialInformation:
         task_variable_information = self.task_variable_gen.generate_variable_dict(**task_variables_kwargs)
-        network_inputs = self.input_gen.generate_network_inputs(task_variable_information)
+        network_inputs = self.sensory_gen.generate_sensory_inputs(task_variable_information)
         sample_information = self.sample_gen.generate_sample_set(num_samples, task_variable_information)
         return TrialInformation(task_variable_information, network_inputs, sample_information)
+
+    def save_metadata(self, path: str):
+        np.save(path, self.task_metadata)
+
+    def load_metadata(self, path):
+        self.task_metadata: Dict[str, Dict] = np.load(path, allow_pickle=True).item()
 

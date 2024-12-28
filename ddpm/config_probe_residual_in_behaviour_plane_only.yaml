@@ -1,0 +1,30 @@
+# Model
+model_name: standard_vectoral
+model_config:
+  recurrence_hidden_layers: [64, 64, 64]
+  time_embedding_size: 64
+
+
+
+# Diffusion
+ultimate_sigma2: 0.02
+starting_sigma2: 0.0001
+num_timesteps: 1000
+
+
+# Training/logging
+logging_freq: 10000
+batch_size: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_unified_20241224/run"
+
+
+# Task
+task_name: probe_cue_vectoral
+task_config:
+  n_items: 3
+  sample_size: 32
+  sample_radius: 5
+  residual_in_behaviour_plane_only: true
+
