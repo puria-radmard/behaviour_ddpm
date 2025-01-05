@@ -18,47 +18,44 @@ class VectoralResidualModel(nn.Module):
     ϵ_θ (x_t, t, Z)
     Just a linear-relu cascade but with an extra set of dims for time and inputs at each layer
     """
-    def __init__(self, state_space_size: int, recurrence_hidden_layers: List[int], input_size: int, time_embedding_size: int, add_affine_layer: bool = False) -> None:
-        
-        self.input_size = input_size
+
+    def __init__(self, state_space_size: int, recurrence_hidden_layers: List[int], input_size: int, time_embedding_size: int, relu_first: bool) -> None:
         
         super().__init__()
         
+        self.input_size = input_size
         self.state_space_size = state_space_size
         self.recurrence_hidden_layers = recurrence_hidden_layers
         self.time_embedding_size = time_embedding_size
 
         all_layer_sizes = recurrence_hidden_layers + [state_space_size]
-        recurrence_layers = [nn.Linear(state_space_size + time_embedding_size + input_size, all_layer_sizes[0]), nn.ReLU()]        # 1 to include time also!
+        recurrence_layers = [nn.ReLU()] if relu_first else []
+        recurrence_layers.extend([nn.Linear(state_space_size + time_embedding_size + input_size, all_layer_sizes[0]), nn.ReLU()])        # 1 to include time also!
         for i, op_s in enumerate(all_layer_sizes[1:]):
             recurrence_layers.extend([nn.Linear(all_layer_sizes[i], op_s), nn.ReLU()])
-            # recurrence_layers.extend([nn.Linear(all_layer_sizes[i] + time_embedding_size + input_size, op_s), nn.ReLU()])
-
-        self.add_affine_layer = add_affine_layer
-
-        if add_affine_layer:
-            self.register_parameter('affine_scaling', nn.Parameter(torch.randn(1, 1, state_space_size), requires_grad = True))
-            self.register_parameter('affine_offset', nn.Parameter(torch.randn(1, 1, state_space_size), requires_grad = True))
-        else:
-            recurrence_layers = recurrence_layers[:-1]
+        recurrence_layers = recurrence_layers[:-1]
 
         self.layers = nn.ModuleList(recurrence_layers)  # R^N -> R^N
+
+    @staticmethod
+    def unsqueeze_start_dims(tensor: _T, start_dims: List[int]):
+        return tensor[*[None for _ in start_dims]].repeat(*start_dims, *[1 for _ in tensor.shape])
         
     def concatenate_with_time_and_input(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
         """
-        x of shape [B, T, layer_size]
+        x of shape [..., T, layer_size]
         t_embeddings_schedule of shape [T, time_emb_size]
-        input_vector of shape [B, T, input_size]
+        input_vector of shape [..., T, input_size]
         """
-        reshaped_t_schedule = t_embeddings_schedule.unsqueeze(0).repeat(x.shape[0], 1, 1)
+        reshaped_t_schedule = self.unsqueeze_start_dims(t_embeddings_schedule, x.shape[:-2])
         x_concat = torch.concat([x, reshaped_t_schedule.to(x.device, x.dtype), input_vector.to(x.device, x.dtype)], -1)
         return x_concat
 
     def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
         """
-        x of shape [B, T, state_space_size]
+        x of shape [..., T, state_space_size]
         t_embeddings_schedule of shape [T, time_emb_size]
-        input_vector of shape [B, T, input_size], passed to all
+        input_vector of shape [..., T, input_size],             <s> passed to all </s>
 
         x[...,i,:] is x_{t_embeddings_schedule[i]}
             e.g. 
@@ -76,8 +73,6 @@ class VectoralResidualModel(nn.Module):
             #     x = layer(x)
             # else:
             #     raise NotImplementedError
-        if self.add_affine_layer:
-            x = x * self.affine_scaling + self.affine_offset
         return x
     
 
@@ -108,6 +103,7 @@ class UNetResidualModel(nn.Module):
         t_embeddings_schedule of shape [T, t_emb_size]
         input_vector of shape [B, T, input_size]
         """
+        raise Exception('Make start dims general again!')
         reshaped_t_schedule = t_embeddings_schedule.unsqueeze(0).repeat(x.shape[0], 1, 1)
         total_input_vector = reshaped_t_schedule# torch.concat([input_vector, reshaped_t_schedule], -1).float()
         return self.unet(x, total_input_vector)

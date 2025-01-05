@@ -61,15 +61,19 @@ class ExampleSampleGenerator(ABC):
         raise NotImplementedError
     
     def mse(self, epsilon_hat: _T, epsilon: _T):
+        """
+        Both coming in shape [..., T, <sample shape>]
+        """
         assert epsilon.shape == epsilon_hat.shape
         batch_size, T = epsilon_hat.shape[:2]
-        mse = torch.square(epsilon_hat - epsilon).reshape(batch_size, T, -1).mean(-1)   # [..., T]
+        *extra_dims, T = epsilon_hat.shape[:-len(self.sample_shape)]
+        mse = torch.square(epsilon_hat - epsilon).reshape(*extra_dims, T, -1).mean(-1)   # [..., T]
         # scaled_mse = self.mse_scaler_schedule[*[None]*extra_dims] * mse[...,1:] # [..., T-1]
         return mse
 
 
 
-class VectoralExampleSampleGenerator(ExampleSampleGenerator):
+class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
     """
     Just generates Cartesian samples (on a point)
 
@@ -84,6 +88,9 @@ class VectoralExampleSampleGenerator(ExampleSampleGenerator):
         sample_space_size = 2
         self.sample_radius = sample_radius
         self.residual_in_behaviour_plane_only = residual_in_behaviour_plane_only
+
+        if self.residual_in_behaviour_plane_only:
+            raise Exception('are you sure you want to do this and not use LinearSubspaceTeacherForcedDDPMReverseProcess...?')
         
         if sample_size == sample_space_size:
             self.linking_matrix = torch.eye(sample_size).cpu().numpy()   # [dim y, dim x]
@@ -96,6 +103,7 @@ class VectoralExampleSampleGenerator(ExampleSampleGenerator):
             self.linking_matrix = orth[:sample_space_size].cpu().numpy()   # [dim y, dim x]
             self.linking_matrix_kernel = orth[sample_space_size:].cpu().numpy()   # [dim x - dim y, dim x]
             self.rotation_matrix = orth.cpu().numpy()   # [dim x, dim x]
+            raise Exception('are you sure you want to do this and not use LinearSubspaceTeacherForcedDDPMReverseProcess...?')
         else:
             raise NotImplementedError
         
@@ -110,12 +118,17 @@ class VectoralExampleSampleGenerator(ExampleSampleGenerator):
         }
 
     def generate_sample_set(self, num_samples: int, variable_dict: Dict[str, _T]) -> SwapSampleInformation:
-        selection_pmf = variable_dict['swap_probabilities']
-        selected_item_idx = torch.tensor(np.random.choice(selection_pmf.shape[0], size = num_samples, replace = True, p = selection_pmf))
-        selected_cartesian = variable_dict['report_features_cart'][selected_item_idx] 
+        selection_pmf = variable_dict['swap_probabilities']                             # [batch, num items]
+        batch_size = selection_pmf.shape[0]
+
+        selected_item_idx = torch.multinomial(selection_pmf, num_samples, replacement=True)                     # [batch, sample]
+
+        batch_idx = torch.arange(batch_size, device=variable_dict['report_features_cart'].device)[:, None].expand(batch_size, num_samples)   # [batch, sample]
+        selected_cartesian = variable_dict['report_features_cart'][batch_idx, selected_item_idx]                 # [batch, sample, 2]
         selected_cartesian = selected_cartesian @ self.linking_matrix
         selected_cartesian = selected_cartesian + torch.randn_like(selected_cartesian) * 0.05
         selected_cartesian = selected_cartesian * self.sample_radius
+
         return SwapSampleInformation(selected_cartesian, selected_item_idx)
 
     def generate_sample_diagnostics(self, sample_set: _T, variable_dict: Dict[str, _T]) -> Tuple[_T, Dict[str, _T]]:
@@ -124,10 +137,10 @@ class VectoralExampleSampleGenerator(ExampleSampleGenerator):
 
     def display_samples(self, sample_set: Union[SwapSampleInformation, _T], axes: Axes) -> None:
         if isinstance(sample_set, SwapSampleInformation):
-            samples = sample_set.sample_set @ self.linking_matrix.T
-            c = sample_set.item_indices
+            samples = sample_set.sample_set[0] @ self.linking_matrix.T
+            c = sample_set.item_indices[0]
         else:
-            samples = sample_set.cpu().numpy() @ self.linking_matrix.T
+            samples = sample_set[0].cpu().numpy() @ self.linking_matrix.T
             c = None
         axes.scatter(samples[:, 0], samples[:, 1], alpha=0.5, s=1, c=c)
         axes.add_patch(plt.Circle((0, 0), self.sample_radius, color='red', fill = False))
@@ -136,20 +149,50 @@ class VectoralExampleSampleGenerator(ExampleSampleGenerator):
         """
         early_preds_set of shape [B, T, <dim x>] but in reversed order (i.e. T --> 1)
         """
-        T = early_preds_set.shape[1]
+        T = early_preds_set.shape[-2]
         for h in range(T):
             if T % 10 == 0:
                 color = cmap.to_rgba(T - h)
-                timestep_preds = early_preds_set[:,h,:] @ self.linking_matrix.T
-                axes.scatter(timestep_preds[:, 0], timestep_preds[:, 1], alpha=0.5, s=1, c=color)
+                timestep_preds = early_preds_set[0,...,h,:] @ self.linking_matrix.T
+                axes.scatter(timestep_preds[:, 0], timestep_preds[:, 1], alpha=0.5, s=1, color=color)
         axes.add_patch(plt.Circle((0, 0), self.sample_radius, color='red', fill = False))
     
     def mse(self, epsilon_hat: _T, epsilon: _T):
         if self.residual_in_behaviour_plane_only:
             epsilon = epsilon @ self.linking_matrix_mse.T
             epsilon_hat = epsilon_hat @ self.linking_matrix_mse.T
-        return super().mse(epsilon_hat, epsilon)
+        return super(VectoralEmbeddedExampleSampleGenerator, self).mse(epsilon_hat, epsilon)
 
+
+
+class RadialVectoralEmbeddedExampleSampleGenerator(VectoralEmbeddedExampleSampleGenerator):
+    """
+    Same as above except samples are generated from a circular Gaussian with std = sample_radius and fixed angle width
+    """
+
+    required_task_variable_keys = {'report_features', 'swap_probabilities'}
+
+    def __init__(self, sample_size: int, sample_radius: float, residual_in_behaviour_plane_only: bool, device='cuda') -> None:
+        super().__init__(sample_size, sample_radius, residual_in_behaviour_plane_only, device)
+
+    def generate_sample_set(self, num_samples: int, variable_dict: Dict[str, _T]) -> SwapSampleInformation:
+        """
+        TODO: do this with a chi2 distribution instead
+        """
+
+        selection_pmf = variable_dict['swap_probabilities']                             # [batch, num items]
+        batch_size = selection_pmf.shape[0]
+
+        selected_item_idx = torch.multinomial(selection_pmf, num_samples, replacement=True)                     # [batch, sample]
+        batch_idx = torch.arange(batch_size, device=variable_dict['report_features'].device)[:, None].expand(batch_size, num_samples)   # [batch, sample]
+
+        sample_abs = self.sample_radius * torch.randn(batch_size, num_samples, 2, device = batch_idx.device).square().sum(-1).sqrt() # [batch, sample]
+        selected_angles = variable_dict['report_features'][batch_idx, selected_item_idx]                 # [batch, sample]
+        sample_angles = (torch.rand_like(selected_angles) * self.sample_radius * 0.1) + selected_angles
+        cartesian_samples = torch.polar(sample_abs, sample_angles.to(sample_abs.dtype))
+        cartesian_samples = torch.stack([cartesian_samples.real, cartesian_samples.imag], -1)
+
+        return SwapSampleInformation(cartesian_samples, selected_item_idx)
 
 
 class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
@@ -162,6 +205,7 @@ class WhiteNoiseStripExampleSampleGenerator(ExampleSampleGenerator):
     required_task_variable_keys = {'report_features', 'swap_probabilities'}
 
     def __init__(self, image_size: int, strip_pixel_width: int) -> None:
+        raise Exception(header = 'need to include batch size dimension here!')
         self.sample_shape = [1, image_size, image_size]
         self.strip_pixel_width = strip_pixel_width
 

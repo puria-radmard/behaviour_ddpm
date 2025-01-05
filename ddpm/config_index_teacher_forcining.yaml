@@ -1,0 +1,39 @@
+# Model
+model_name: teacher_forced_vectoral
+model_config:
+  recurrence_hidden_layers: []
+  time_embedding_size: 16
+  sample_ambient_dim: 32
+  rnn_baseline: false
+  residual_model_kwargs:
+    relu_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+
+
+
+# Diffusion
+ultimate_sigma2: 0.05
+starting_sigma2: 0.05
+num_timesteps: 150
+
+
+# Training/logging
+logging_freq: 100
+batch_size: 64
+num_samples: 512
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_teacher_forcing_20241228/run"
+
+
+# Task
+task_name: indexing_cue_vectoral
+task_config:
+  n_items: 1
+  sample_size: 2
+  sample_radius: 5
+  residual_in_behaviour_plane_only: false
+  polar_sample: false
+

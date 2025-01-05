@@ -16,6 +16,8 @@ class InputModelBlock(nn.Module):
         self.sensory_shape = sensory_shape
         self.network_input_size = network_input_size
         self.device = device
+        assert len(sensory_shape) == 1 and sensory_shape[0] == network_input_size,\
+            f"InputModelBlock can only currently handle the identity mapping. Cannot have sensory_shape = {sensory_shape} and network_input_size = {network_input_size}"
         super().__init__()
     
     def forward(self, x: _T) -> _T:

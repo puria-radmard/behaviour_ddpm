@@ -28,7 +28,7 @@ args = ConfigNamepace.from_yaml_path(sys.argv[1])
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-# Unpack model and diffusion args
+# Unpack all args
 state_space_size = args.state_space_size
 recurrence_hidden_layers = args.recurrence_hidden_layers
 time_embedding_size = args.time_embedding_size
@@ -36,6 +36,28 @@ ultimate_sigma2 = args.ultimate_sigma2
 starting_sigma2 = args.starting_sigma2
 num_timesteps = args.num_timesteps
 noise_schedule_power = args.noise_schedule_power
+num_samples = args.num_samples
+batch_size = args.batch_size
+num_trials = args.num_trials
+logging_freq = args.logging_freq
+save_base = args.save_base
+task_name = args.task_name
+task_config = args.task_config
+model_name = args.model_name
+model_config = args.model_config
+lr = args.lr
+
+
+
+# Set up logging
+magma = plt.get_cmap('magma')
+cNorm  = colors.Normalize(vmin=1, vmax=num_timesteps)
+kl_colors_scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=magma)
+kl_colors_scalarMap.set_array([])
+timer = LoopTimer(num_trials)
+[training_print_path], save_base, _ = configure_logging_paths(save_base, log_suffixes=[f"train"], index_new=True)
+all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
+args.write_to_yaml(os.path.join(save_base, 'args.yaml'))
 
 
 # Generate noising schedule
@@ -47,40 +69,22 @@ sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 
 # Set up task
-task_name = args.task_name
-task_config = args.task_config
 task: tasks.WMDiffusionTask = getattr(tasks, task_name)(**task_config.dict)
+task.save_metadata(os.path.join(save_base, 'task_metadata'))
 
 
 # Set up model
-model_name = args.model_name
-model_config = args.model_config
+residual_model_kwargs = model_config.dict.pop('residual_model_kwargs').dict
+ddpm_model_kwargs = model_config.dict.pop('ddpm_model_kwargs').dict
 ddpm_model: DDPMReverseProcessBase = getattr(model, model_name)(
-    **model_config.dict, 
+    **model_config.dict, residual_model_kwargs=residual_model_kwargs, ddpm_model_kwargs=ddpm_model_kwargs,
     sigma2x_schedule = sigma2x_schedule, sensory_shape = task.sensory_gen.sensory_shape, sample_shape = task.sample_gen.sample_shape,
     device = device
 ).to(device)
 
 
 # Set up training
-batch_size = args.batch_size
-num_trials = args.num_trials
-lr = args.lr
 optim = torch.optim.Adam(ddpm_model.parameters(), lr = lr)
-
-
-# Set up logging
-logging_freq = args.logging_freq
-save_base = args.save_base
-magma = plt.get_cmap('magma')
-cNorm  = colors.Normalize(vmin=1, vmax=num_timesteps)
-kl_colors_scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=magma)
-kl_colors_scalarMap.set_array([])
-timer = LoopTimer(num_trials)
-[training_print_path], save_base, _ = configure_logging_paths(save_base, log_suffixes=[f"train"], index_new=True)
-all_individual_residual_mses = np.zeros([num_trials, len(sigma2x_schedule)])
-args.write_to_yaml(os.path.join(save_base, 'args.yaml'))
-task.save_metadata(os.path.join(save_base, 'task_metadata'))
 
 
 # For transparency
@@ -103,32 +107,37 @@ plt.savefig(os.path.join(save_base, "sigma_schedule_unrolling.png"))
 # This will get filled in and continuously updated by task.sample_gen.generate_sample_diagnostics
 recent_sample_diagnostics = deque(maxlen=100)
 
+plotting_offset = 1
+plotting_start = 100
+
 
 for t in tqdm(range(num_trials)):
 
     timer.loop_start()
 
-    trial_information = task.generate_trial_information(num_samples=batch_size)
+    trial_information = task.generate_trial_information(batch_size=batch_size, num_samples=num_samples)
 
     forward_process = ddpm_model.noise(x_0 = trial_information.sample_information.sample_set.to(device).float())
     epsilon_hat = ddpm_model.residual(
         x_samples = forward_process['x_t'],
         network_input = trial_information.network_inputs,
     )
-    residual_mse = task.sample_gen.mse(epsilon_hat, forward_process['epsilon'])
+    residual_mse = task.sample_gen.mse(epsilon_hat, forward_process['epsilon']) # [batch, samples, time]
 
     optim.zero_grad()
     total_loss = residual_mse.mean()
     total_loss.backward()
     optim.step()
 
-    all_individual_residual_mses[t,:] = residual_mse.detach().cpu().mean(0)
+    if t >= plotting_start:
+        all_individual_residual_mses[t-plotting_start,:] = residual_mse.detach().cpu().mean(0).mean(0)
 
-    if (t - 10) % logging_freq == 0:
+    if (t - plotting_offset) % logging_freq == 0:
+
 
         novel_samples_dict = ddpm_model.generate_samples(
-            network_input = trial_information.network_inputs,
-            num_samples = batch_size,
+            network_input = trial_information.network_inputs[[0],:],
+            samples_shape = [1, num_samples],
             turn_off_noise = False
         )
 
@@ -138,9 +147,10 @@ for t in tqdm(range(num_trials)):
         axes[0,1].set_title('Generated sample(s)')
         axes[0,2].set_title('Early predictions of $x_0$')
         axes[1,2].set_title('Samples from base distribution')
+
         task.sample_gen.display_samples(trial_information.sample_information, axes[0,0])
         task.sample_gen.display_samples(novel_samples_dict['samples'], axes[0,1])
-        task.sample_gen.display_samples(forward_process['x_t'][:,-1], axes[1,2])
+        task.sample_gen.display_samples(forward_process['x_t'][:,:,-1,...], axes[1,2])
         task.sample_gen.display_early_x0_pred_timeseries(novel_samples_dict['early_x0_preds'], axes[0,2], kl_colors_scalarMap)
 
         task.task_variable_gen.display_task_variables(trial_information.task_variable_information, axes[1,0], axes[1,1])
@@ -157,9 +167,11 @@ for t in tqdm(range(num_trials)):
         #     recent_sample_diagnostics = recent_sample_diagnostics, axes = axes[2,0]
         # )
 
-        for h, trace in enumerate(all_individual_residual_mses[:t+1].T):
-            color = kl_colors_scalarMap.to_rgba(h + 1)
-            axes[2,1].plot(trace, color = color)
+        if t > plotting_start:
+            for h, trace in enumerate(all_individual_residual_mses[:t+1-plotting_start].T):
+                color = kl_colors_scalarMap.to_rgba(h + 1)
+                axes[2,0].plot(trace, color = color)
+                axes[2,1].plot(trace[-int(2 * (t+1-plotting_start) / 3):], color = color)
         cax = inset_axes(axes[2,0], width="30%", height=1.,loc=3)
         plt.colorbar(kl_colors_scalarMap, cax = cax, ticks=range(1, num_timesteps, 10), orientation='vertical')
 

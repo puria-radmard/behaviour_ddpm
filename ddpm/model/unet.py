@@ -106,8 +106,10 @@ class UNet(nn.Module):
             torch.Tensor: Output tensor of shape [batch_size, T, num_channels, image_size, image_size]
         """
 
+
         batch_size, timesteps = x.shape[:2]
         x = x.reshape(batch_size * timesteps, *self.image_shape).float()
+        import pdb; pdb.set_trace(header = 'make sure whatever rework done here actually works!')
 
         # x == x.reshape(batch_size * timesteps, *self.image_shape).reshape(batch_size, timesteps, *self.image_shape)
         

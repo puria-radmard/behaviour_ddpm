@@ -8,21 +8,33 @@ def standard_fixed_probability_vectoral(sample_size, pmf: List[int], **sample_kw
     n_items = len(pmf)
     task_variable_gen = FixedProvidedSwapProbabilityTaskVariableGenerator(n_items, pmf)
     sensory_gen = ProvidedSwapProbabilitySensoryGenerator(n_items)
-    sample_gen = VectoralExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
+    polar_sample = sample_kwargs.pop('polar_sample')
+    if polar_sample:
+        sample_gen = RadialVectoralEmbeddedExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
+    else:
+        sample_gen = VectoralEmbeddedExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
     return WMDiffusionTask(task_variable_gen=task_variable_gen, sensory_gen=sensory_gen, sample_gen=sample_gen)
 
 
 def indexing_cue_vectoral(sample_size, n_items, **sample_kwargs):
     task_variable_gen = ZeroTemperatureSwapProbabilityTaskVariableGenerator(n_items)
     sensory_gen = IndexCuingSensoryGenerator(n_items)
-    sample_gen = VectoralExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
+    polar_sample = sample_kwargs.pop('polar_sample')
+    if polar_sample:
+        sample_gen = RadialVectoralEmbeddedExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
+    else:
+        sample_gen = VectoralEmbeddedExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
     return WMDiffusionTask(task_variable_gen=task_variable_gen, sensory_gen=sensory_gen, sample_gen=sample_gen)
 
 
 def probe_cue_vectoral(sample_size, n_items, **sample_kwargs):
     task_variable_gen = ZeroTemperatureSwapProbabilityTaskVariableGenerator(n_items)
     sensory_gen = ProbeCuingSensoryGenerator(n_items)
-    sample_gen = VectoralExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
+    polar_sample = sample_kwargs.pop('polar_sample')
+    if polar_sample:
+        sample_gen = RadialVectoralEmbeddedExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
+    else:
+        sample_gen = VectoralEmbeddedExampleSampleGenerator(sample_size = sample_size, **sample_kwargs)
     return WMDiffusionTask(task_variable_gen=task_variable_gen, sensory_gen=sensory_gen, sample_gen=sample_gen)
 
 

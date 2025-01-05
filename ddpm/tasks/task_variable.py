@@ -22,14 +22,19 @@ from purias_utils.multiitem_working_memory.util.circle_utils import generate_cir
 #     }
 
 
-def generate_stimulus_features(N_items: int) -> Dict[str, _T]:
-    probe_features = generate_circular_feature_list(N_items, torch.pi / 4)
-    report_features = generate_circular_feature_list(N_items, torch.pi / 4)
+def generate_stimulus_features(N_items: int, batch_size: int) -> Dict[str, _T]:
+    "all are [batch_size, num_items, 1/2]"
+    all_probe_features, all_report_features = [], []
+    for bs in range(batch_size):
+        all_probe_features.append(generate_circular_feature_list(N_items, torch.pi / 4))
+        all_report_features.append(generate_circular_feature_list(N_items, torch.pi / 4))
+    all_probe_features = torch.tensor(all_probe_features)
+    all_report_features = torch.tensor(all_report_features)
     return {
-        'probe_features': probe_features,
-        'report_features': report_features,
-        'probe_features_cart': torch.tensor(np.stack(polar2cart(1.0, probe_features), -1)),
-        'report_features_cart': torch.tensor(np.stack(polar2cart(1.0, report_features), -1)),
+        'probe_features': all_probe_features,
+        'report_features': all_report_features,
+        'probe_features_cart': torch.stack(polar2cart(1.0, all_probe_features), -1),
+        'report_features_cart': torch.stack(polar2cart(1.0, all_report_features), -1),
     }
 
 
@@ -46,7 +51,7 @@ class TaskVariableGenerator(ABC):
     task_metadata = {}
 
     @abstractmethod
-    def generate_variable_dict(self, *args, **kwargs) -> Dict[str, _T]:
+    def generate_variable_dict(self, batch_size: int, *args, **kwargs) -> Dict[str, _T]:
         raise NotImplementedError
 
     @abstractmethod
@@ -70,8 +75,8 @@ class StandardCartesianWMTaskVariableGenerator(TaskVariableGenerator, ABC):
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
-    def generate_variable_dict(self) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items)
+    def generate_variable_dict(self, batch_size: int) -> Dict[str, _T]:
+        ret = generate_stimulus_features(self.num_items, batch_size)
         probability_vector_task_variables = self.generate_probability_vectors(ret)
         ret.update(probability_vector_task_variables)
         return ret
@@ -89,17 +94,18 @@ class FixedProvidedSwapProbabilityTaskVariableGenerator(StandardCartesianWMTaskV
         super().__init__(num_items)
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
-        assert len(variable_dict['report_features']) == self.num_items
-        return {'swap_probabilities': self.probability_vector}
+        batch_size = variable_dict['report_features'].shape[0]
+        assert tuple(variable_dict['report_features'].shape) == (batch_size, self.num_items)
+        return {'swap_probabilities': self.probability_vector.unsqueeze(0).repeat(batch_size, 1)}
 
     def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
-        assert len(axes) >= 1
         axes[0].set_title('Report feature values with probability of swapping to item')
+        import pdb; pdb.set_trace(header = 'shapes here!')
         axes[0].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
-        axes[0].scatter(*task_variable_information['report_features_cart'].T, s = 50)
-        for i, prob in enumerate(task_variable_information['swap_probabilities']):
+        axes[0].scatter(*task_variable_information['report_features_cart'][0].T, s = 50)
+        for i, prob in enumerate(task_variable_information['swap_probabilities'][0]):
             prob = round(prob.item(), 3)
-            axes[0].annotate(prob, (task_variable_information['report_features_cart'][i,0], task_variable_information['report_features_cart'][i,1]))
+            axes[0].annotate(prob, (task_variable_information['report_features_cart'][0,i,0], task_variable_information['report_features_cart'][0,i,1]))
 
 
 
@@ -112,31 +118,36 @@ class ZeroTemperatureSwapProbabilityTaskVariableGenerator(StandardCartesianWMTas
         self.task_variable_keys = self.task_variable_keys.union({'cued_item_idx'})
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
-        assert len(variable_dict['report_features']) == self.num_items
-        probability_vector = torch.zeros(self.num_items)
-        selected_item = random.randint(0, self.num_items - 1)
-        probability_vector[selected_item] = 1.0
+        """
+        selected_item of shape [batch]
+        probability_vector of shape [batch, num_items]
+        """
+        batch_size = variable_dict['report_features'].shape[0]
+        assert tuple(variable_dict['report_features'].shape) == (batch_size, self.num_items)
+        probability_vector = torch.zeros(batch_size, self.num_items)
+        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        probability_vector[range(batch_size),selected_item] = 1.0
         return {'swap_probabilities': probability_vector, 'cued_item_idx': selected_item}
     
     def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
         assert len(axes) >= 1
         axes[0].set_title('Report feature values\nwith probability of swapping to item')
         axes[0].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
-        axes[0].scatter(*task_variable_information['report_features_cart'].T, s = 50)
-        for i, prob in enumerate(task_variable_information['swap_probabilities']):
+        axes[0].scatter(*task_variable_information['report_features_cart'][0].T, s = 50)
+        for i, prob in enumerate(task_variable_information['swap_probabilities'][0]):
             prob = round(prob.item(), 3)
-            axes[0].annotate(prob, (task_variable_information['report_features_cart'][i,0], task_variable_information['report_features_cart'][i,1]))
-            if i == task_variable_information['cued_item_idx']:
-                axes[0].add_patch(plt.Circle(task_variable_information['report_features_cart'][i].T.tolist(), 0.1, color='green', fill = False))
+            axes[0].annotate(prob, (task_variable_information['report_features_cart'][0,i,0], task_variable_information['report_features_cart'][0,i,1]))
+            if i == task_variable_information['cued_item_idx'][0]:
+                axes[0].add_patch(plt.Circle(task_variable_information['report_features_cart'][0,i].tolist(), 0.1, color='green', fill = False))
 
         axes[1].set_title('Probe feature values\nwith probability of swapping to item')
         axes[1].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
-        axes[1].scatter(*task_variable_information['probe_features_cart'].T, s = 50)
-        for i, prob in enumerate(task_variable_information['swap_probabilities']):
+        axes[1].scatter(*task_variable_information['probe_features_cart'][0].T, s = 50)
+        for i, prob in enumerate(task_variable_information['swap_probabilities'][0]):
             prob = round(prob.item(), 3)
-            axes[1].annotate(prob, (task_variable_information['probe_features_cart'][i,0], task_variable_information['probe_features_cart'][i,1]))
-            if i == task_variable_information['cued_item_idx']:
-                axes[1].add_patch(plt.Circle(task_variable_information['probe_features_cart'][i].T.tolist(), 0.1, color='green', fill = False))
+            axes[1].annotate(prob, (task_variable_information['probe_features_cart'][0,i,0], task_variable_information['probe_features_cart'][0,i,1]))
+            if i == task_variable_information['cued_item_idx'][0]:
+                axes[1].add_patch(plt.Circle(task_variable_information['probe_features_cart'][0,i].tolist(), 0.1, color='green', fill = False))
 
 
 
