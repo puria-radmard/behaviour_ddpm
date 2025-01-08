@@ -416,7 +416,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         return {'epsilon_hat': epsilon_hat, 'subspace_trajectories': subspace_trajectories}
 
     @torch.no_grad()
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
+    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0, kwargs_for_residual_model = {}) -> Dict[str, _T]:
         """
         Only difference to OneShotDDPMReverseProcess.generate_samples is that the denoising is done in the ambient space, not in the
             sample space. Samples are decoded at the end
@@ -435,8 +435,8 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         if base_samples is None:
             base_samples = torch.randn(*samples_shape, self.sample_ambient_dim, device = self.sigma2xt_schedule.device) * self.base_std
         else:
-            samples_shape = base_samples.shape[:-len(self.sample_ambient_dim)]
-            assert tuple(base_samples.shape) == (*samples_shape, *self.sample_ambient_dim)
+            samples_shape = base_samples.shape[:-1]
+            assert tuple(base_samples.shape) == (*samples_shape, self.sample_ambient_dim)
 
         input_vector = self.input_model(network_input)
         assert tuple(input_vector.shape) == (*samples_shape, self.residual_model.input_size,),\
@@ -549,12 +549,57 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
 
 
 
-class PreperatoryLinearSubspaceTeacherForcedDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProcess):
+class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProcess):
 
-    def __init__(self, num_prep_steps: bool, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, device='cuda') -> None:
+    def __init__(self, num_prep_steps: int, network_input_during_diffusion: bool, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, device='cuda') -> None:
+
         super().__init__(seperate_output_neurons, stabilise_nullspace, sample_ambient_dim, sample_shape, sigma2xt_schedule, residual_model, input_model, time_embedding_size, device)
 
+        self.register_parameter('prep_time_embedding', nn.Parameter(torch.randn(1, time_embedding_size), requires_grad = True))
+        self.network_input_during_diffusion = network_input_during_diffusion
+        self.num_prep_steps = num_prep_steps
 
-    def prepare(self, ):
-        pass
+
+    def prepare(self, network_input: _T, batch_shape: List[int], kwargs_for_residual_model = {}) -> Dict[str, _T]:
+        """
+        Generate initial states to feed into residual or generate_samples
+
+        As with those methods, input_vector of shape [..., <shape Z>], where [...] given by batch_shape
+            Won't check this here as they will be checked downstream
+        """
+        
+        initial_state = torch.randn(*batch_shape, 1, self.sample_ambient_dim, device = self.sigma2xt_schedule.device) * self.base_std # [..., 1, D]
+        input_vector = self.input_model(network_input).unsqueeze(-2)         # [..., 1, Di]
+
+        recent_state = initial_state
+        preparatory_trajectory = []
+
+        for t_idx in range(1, self.num_prep_steps):
+            
+            # NB: this is not actually a residual!
+            embedded_predicted_residual = self.residual_model(recent_state, self.prep_time_embedding, input_vector)
+            recent_state, _ = self.denoise_one_step(t_idx, recent_state, embedded_predicted_residual, noise_scaler=1.0)
+            preparatory_trajectory.append(recent_state)
+
+
+        preparatory_trajectory = torch.concat(preparatory_trajectory[::-1], -2)        # Switched to forward time time!
+
+        return {
+            'preparatory_trajectory': preparatory_trajectory,
+            'postprep_state': preparatory_trajectory[...,0,:],    # Again, forward time, so first state here will be first state for the denoising
+            'postprep_base_samples': preparatory_trajectory[...,0,:] @ self.auxiliary_embedding_matrix.T,
+        }
+
+    def residual(self, x_samples: _T, network_input: _T, kwargs_for_residual_model={}) -> Dict[str, _T]:
+        prep_dict = self.prepare(network_input, x_samples.shape[:-2])
+        network_input_mult = 1.0 if self.network_input_during_diffusion else 0.0
+        residual_dict = super().residual(x_samples, network_input * network_input_mult, prep_dict['postprep_state'], kwargs_for_residual_model)
+        return dict(**prep_dict, **residual_dict)
+
+    def generate_samples(self, network_input: _T, samples_shape: List[int], noise_scaler: float = 1.0, kwargs_for_residual_model={}) -> Dict[str, _T]:
+        prep_dict = self.prepare(network_input, samples_shape)
+        network_input_mult = 1.0 if self.network_input_during_diffusion else 0.0
+        samples_dict = super().generate_samples(network_input * network_input_mult, None, prep_dict['postprep_state'], noise_scaler, kwargs_for_residual_model)
+        return dict(**prep_dict, **samples_dict)
+
 
