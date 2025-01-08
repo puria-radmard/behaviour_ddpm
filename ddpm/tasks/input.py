@@ -39,9 +39,8 @@ class ProvidedSwapProbabilitySensoryGenerator(SensoryGenerator):
         batch_size = variable_dict['probe_features_cart'].shape[0]
         assert tuple(variable_dict['probe_features_cart'].shape) == (batch_size, self.num_items, 2)
         assert tuple(variable_dict['swap_probabilities'].shape) == (batch_size, self.num_items, )
-        import pdb; pdb.set_trace(header = 'Cannot have flatten here!')
-        flattened_coords = variable_dict['report_features_cart'].flatten()  # on each batch row: x1, y1, x2, y2, ...
-        report_features_and_pmfs = torch.concat([flattened_coords, variable_dict['swap_probabilities']])
+        flattened_coords = variable_dict['report_features_cart'].reshape(batch_size, -1)  # on each batch row: x1, y1, x2, y2, ...
+        report_features_and_pmfs = torch.concat([flattened_coords, variable_dict['swap_probabilities']], 1)
         return report_features_and_pmfs
 
 
@@ -85,11 +84,9 @@ class ProbeCuingSensoryGenerator(SensoryGenerator):
     def generate_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
         batch_size = variable_dict['probe_features_cart'].shape[0]
         assert tuple(variable_dict['probe_features_cart'].shape) == (batch_size, self.num_items, 2)
-        flattened_coords = variable_dict['report_features_cart'].flatten()  # on each batch row: x1, y1, x2, y2, ...
-        flattened_probe_coords = variable_dict['probe_features_cart'].flatten()  # on each batch row: x1, y1, x2, y2, ...
-        import pdb; pdb.set_trace(header = 'fix variable cuing here!!')
-        selected_probe_coords = flattened_probe_coords[2 * variable_dict['cued_item_idx']: 2 * variable_dict['cued_item_idx'] + 2]
-        import pdb; pdb.set_trace(header = 'concat behaviour...')
+        flattened_coords = variable_dict['report_features_cart'].reshape(batch_size, -1)  # on each batch row: x1, y1, x2, y2, ...
+        flattened_probe_coords = variable_dict['probe_features_cart'].reshape(batch_size, -1)  # on each batch row: x1, y1, x2, y2, ...
+        selected_probe_coords = torch.stack([variable_dict['probe_features_cart'][b,i] for b, i in enumerate(variable_dict['cued_item_idx'])])
         report_features_and_index = torch.concat([flattened_coords, flattened_probe_coords, selected_probe_coords], 1)
         return report_features_and_index
 

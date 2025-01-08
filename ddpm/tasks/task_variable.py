@@ -100,7 +100,6 @@ class FixedProvidedSwapProbabilityTaskVariableGenerator(StandardCartesianWMTaskV
 
     def display_task_variables(self, task_variable_information: Dict[str, _T], *axes: Axes) -> None:
         axes[0].set_title('Report feature values with probability of swapping to item')
-        import pdb; pdb.set_trace(header = 'shapes here!')
         axes[0].add_patch(plt.Circle((0, 0), 1.0, color='red', fill = False))
         axes[0].scatter(*task_variable_information['report_features_cart'][0].T, s = 50)
         for i, prob in enumerate(task_variable_information['swap_probabilities'][0]):

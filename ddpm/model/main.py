@@ -14,11 +14,13 @@ from ddpm.model.input import InputModelBlock
 
 
 
+
+
 class DDPMReverseProcessBase(nn.Module, ABC):
     """
     Time varying sigma schedule:
         sigma2xt_schedule is beta_t in the original literature, of shape [T]
-        sigma2xt_schedule[i] gives \sigma^2_{i+1} e.g. sigma2xt_schedule[0] gives \sigma^2_1 etc.
+        sigma2xt_schedule[i] gives \\sigma^2_{i+1} e.g. sigma2xt_schedule[0] gives \\sigma^2_1 etc.
     """
 
     def __init__(
@@ -69,8 +71,8 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         #self.mse_scaler_schedule = mse_scaler_schedule_num / mse_scaler_schedule_denom
 
         ## Convinience                
-        self.reshaped_a_t_schedule = self.a_t_schedule[:, *[None for _ in self.sample_shape]] # [1, T, <1 for each of shape x>]
-        self.reshaped_root_b_t_schedule = self.root_b_t_schedule[:, *[None for _ in self.sample_shape]] # [1, T, <1 for each of shape x>]
+        self.reshaped_a_t_schedule = self.a_t_schedule[:, *[None for _ in self.sample_shape]] # [T, <1 for each of shape x>]
+        self.reshaped_root_b_t_schedule = self.root_b_t_schedule[:, *[None for _ in self.sample_shape]] # [T, <1 for each of shape x>]
 
 
     def to(self, *args, **kwargs):
@@ -82,6 +84,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         # self.mse_scaler_schedule = self.mse_scaler_schedule.to(*args, **kwargs)
         self.noise_scaler_schedule = self.noise_scaler_schedule.to(*args, **kwargs)
         return super(DDPMReverseProcessBase, self).to(*args, **kwargs)
+
 
     @abstractmethod
     def noise(self, x_0: _T) -> Dict[str, _T]:
@@ -100,7 +103,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         """
         raise NotImplementedError
     
-    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, turn_off_noise: bool):
+    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, noise_scaler: float):
         """
         t_idx indexes time backwards, so ranges from 1 to T
 
@@ -115,8 +118,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         assert t_idx > 0 and t_idx <= self.T
 
         # assert list(x_t_plus_1.shape) == [num_samples, 1, *self.sample_shape] == list(predicted_residual.shape)
-
-        noise = torch.zeros_like(x_t_plus_1) if turn_off_noise else torch.randn_like(x_t_plus_1)
+        noise = noise_scaler * torch.randn_like(x_t_plus_1)
         scaled_noise = noise * self.noise_scaler_schedule[-t_idx]
         scaled_base_samples = x_t_plus_1 * self.base_samples_scaler_schedule[-t_idx]
         scaled_residual = self.residual_scaler_schedule[-t_idx] * predicted_residual # [..., 1, dim x]
@@ -127,7 +129,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         return one_step_denoise, early_x0_pred
 
     @abstractmethod
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, turn_off_noise: bool = False) -> Dict[str, _T]:
+    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
         """
         input_vector of shape [..., <shape Z>]
         If provided, base_samples of shape [..., <shape x>]
@@ -158,10 +160,8 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
         """
         assert list(x_0.shape[-len(self.sample_shape):]) == self.sample_shape, f"Expected samples that end with shape {self.sample_shape}, got samples of shape {x_0.shape}"
 
-        import pdb; pdb.set_trace(header = 'fix all of thise!!!')
-
         num_extra_dim = len(x_0.shape) - len(self.sample_shape)
-        x_0 = x_0[*[None]*num_extra_dim].repeat(*[1]*num_extra_dim, self.T, *[1]*len(self.sample_shape))
+        x_0 = x_0.unsqueeze(num_extra_dim).repeat(*[1]*num_extra_dim, self.T, *[1]*len(self.sample_shape))
         epsilon = torch.randn_like(x_0)
 
         # [..., T, dim x]
@@ -173,36 +173,29 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
             'epsilon': epsilon
         }
 
-    def residual(self, x_samples: _T, network_input: _T, **kwargs_for_residual_model) -> Dict[str, _T]:
+    def residual(self, x_samples: _T, network_input: _T, kwargs_for_residual_model = {}) -> Dict[str, _T]:
         """
         x_samples of shape [..., T, <shape x>]
         network_input of shape [..., <shape Z>]       --> same for all timesteps in this class!
         """
-        import pdb; pdb.set_trace(header = 'make sure this works too!')
-
         num_extra_dim = len(x_samples.shape) - len(self.sample_shape) - 1 # including time now
         batch_shape = x_samples.shape[:num_extra_dim]
         input_vector: _T = self.input_model(network_input)
+        
+        assert tuple(input_vector.shape) == (*batch_shape, self.residual_model.input_size,), f"Expected input_vector shape to be {(*batch_shape, self.residual_model.input_size)} but got {tuple(input_vector.shape)}"
 
-        import pdb; pdb.set_trace(header = 'deal with new inputs shape here!')
+        assert tuple(x_samples.shape) == (*batch_shape, self.T, *self.sample_shape),\
+            f"Expected x_samples shape to end in {self.sample_shape} but got {x_samples.shape}"
 
-        assert tuple(input_vector.shape) == (self.residual_model.input_size,),\
-            f"Expected input_vector shape to be just {(self.residual_model.input_size)} but got {tuple(input_vector.shape)}"
-
-        assert tuple(x_samples.shape) == (*input_vector, self.T, *self.sample_shape),\
-            f"Expected x_samples shape to end in {self.sample_space_size} but got {x_samples.shape}"
-
-        input_vector = input_vector[*[None]*(num_extra_dim+1)].repeat(*batch_shape, self.T, 1)
+        reshaped_input_vector = input_vector.unsqueeze(-2).repeat(*[1 for _ in batch_shape], self.T, 1)
         t_embeddings = self.time_embeddings(self.t_schedule)
-        epsilon_hat = self.residual_model(x = x_samples, t_embeddings_schedule = t_embeddings, input_vector = input_vector, **kwargs_for_residual_model)    # [..., T, <sample shape>]
+        epsilon_hat = self.residual_model(x = x_samples, t_embeddings_schedule = t_embeddings, input_vector = reshaped_input_vector, **kwargs_for_residual_model)    # [..., T, <sample shape>]
         assert x_samples.shape == epsilon_hat.shape
 
-        import pdb; pdb.set_trace(header = 'check shapes!')
-
-        return epsilon_hat
+        return {'epsilon_hat': epsilon_hat}
 
     @torch.no_grad()
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, turn_off_noise: bool = False) -> Dict[str, _T]:
+    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
         """
         input_vector of shape [..., <shape Z>]
         If provided, base_samples of shape [..., <shape x>]
@@ -221,12 +214,11 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
             samples_shape = base_samples.shape[:-len(self.sample_shape)]
             assert tuple(base_samples.shape) == (*samples_shape, *self.sample_shape)
         
-        import pdb; pdb.set_trace(header = 'deal with new inputs shape here!')
-
         input_vector = self.input_model(network_input)
-        assert tuple(input_vector.shape) == (self.residual_model.input_size,),\
+        assert tuple(input_vector.shape) == (*samples_shape, self.residual_model.input_size,), \
             f"Expected input_vector shape to be just {(self.residual_model.input_size)} but got {tuple(input_vector.shape)}"
-        input_vector = input_vector[*[None]*len(samples_shape)].repeat(*samples_shape, 1, 1)         # [..., 1, Di]
+            
+        input_vector = input_vector.unsqueeze(-2)         # [..., 1, Di]
         
         base_samples = base_samples.unsqueeze(len(samples_shape))                # [..., 1, D]
         t_embeddings = self.time_embeddings(self.t_schedule)
@@ -240,7 +232,7 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
 
             predicted_residual = self.residual_model(base_samples, t_embedding, input_vector)
 
-            base_samples, early_x0_pred = self.denoise_one_step(t_idx, base_samples, predicted_residual, turn_off_noise)
+            base_samples, early_x0_pred = self.denoise_one_step(t_idx, base_samples, predicted_residual, noise_scaler)
 
             sample_trajectory.append(base_samples.detach().cpu())
             early_x0_preds.append(early_x0_pred.detach().cpu())
@@ -248,11 +240,9 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
         sample_trajectory = torch.concat(sample_trajectory, len(samples_shape)) # [..., T, <shape x>]
         early_x0_preds = torch.concat(early_x0_preds, len(samples_shape)) # [..., T, <shape x>]
 
-        import pdb; pdb.set_trace(header = 'shapes!')
-
         return {
             'sample_trajectory': sample_trajectory,
-            'samples': base_samples.squeeze(1),
+            'samples': base_samples.squeeze(-2),
             'early_x0_preds': early_x0_preds,
         }
             
@@ -295,7 +285,7 @@ class TeacherForcedDDPMReverseProcessBase(DDPMReverseProcessBase):
         trajectory = [x_0]
         for t, eps in enumerate(epsilon_actual):    # Forward time
             trajectory.append((trajectory[-1] * self.incremental_modulation_schedule[t]) + (self.std_schedule[t] * eps))
-        x_t = torch.stack(trajectory[:-1], num_extra_dim)
+        x_t = torch.stack(trajectory[1:], num_extra_dim)
 
         # Effective epsilons, which should be predicted
         epsilon_effective = (x_t - (self.reshaped_a_t_schedule * x_0.unsqueeze(num_extra_dim))) / self.reshaped_root_b_t_schedule
@@ -348,14 +338,14 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         self.sample_subspace_accessor = self.sample_subspace_accessor.to(*args, **kwargs)
         return super().to(*args, **kwargs)
 
-    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, turn_off_noise: bool):
+    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, noise_scaler: float):
         if self.stabilise_nullspace:
             coeff = (1 - self.euler_alpha - self.base_samples_scaler_schedule[-t_idx]) / self.residual_scaler_schedule[-t_idx]
             stabilising_correction = coeff * (x_t_plus_1 @ self.behaviour_nullspace_accessor)
             predicted_residual = predicted_residual - stabilising_correction
-        return super().denoise_one_step(t_idx, x_t_plus_1, predicted_residual, turn_off_noise)
+        return super().denoise_one_step(t_idx, x_t_plus_1, predicted_residual, noise_scaler)
 
-    def residual(self, x_samples: _T, network_input: _T, initial_state: Optional[_T] = None, **kwargs_for_residual_model) -> Dict[str, _T]:
+    def residual(self, x_samples: _T, network_input: _T, initial_state: Optional[_T] = None, kwargs_for_residual_model = {}) -> Dict[str, _T]:
         """
         x_samples of shape [..., T, <shape x>]
             Importantly, these now define continuous, gradually noised sample trajectories, not one-shot noising from the GT samples
@@ -380,7 +370,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         input_vector = input_vector.unsqueeze(-2)
 
         assert tuple(input_vector.shape) == (*batch_shape, 1, self.residual_model.input_size,), f"Expected input_vector shape to be {(*batch_shape, self.residual_model.input_size)} but got {tuple(input_vector.shape)}"
-        assert tuple(x_samples.shape) == (*batch_shape, self.T, *self.sample_shape), f"Expected x_samples shape to end with {self.sample_space_size} but got {x_samples.shape}"
+        assert tuple(x_samples.shape) == (*batch_shape, self.T, *self.sample_shape), f"Expected x_samples shape to end with {self.sample_shape} but got {x_samples.shape}"
 
         t_embeddings = self.time_embeddings(self.t_schedule)
         embedded_samples = x_samples @ self.auxiliary_embedding_matrix        # [..., T, ambient space dim] --> will be used for teacher forcing
@@ -390,33 +380,43 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         else:
             assert tuple(initial_state.shape) == (*batch_shape, self.sample_ambient_dim), f"Expected initial_state shape to end with {self.sample_ambient_dim} but got {tuple(initial_state.shape)}"
 
-        uncorrected_one_step_denoising = initial_state.unsqueeze(-2) # [..., 1, ambient space dim]
+        one_step_denoising = initial_state.unsqueeze(-2) # [..., 1, ambient space dim]
         all_predicted_residuals = []
+        all_subspace_trajectories = []
 
         for t_idx in range(1, self.T + 1):
-            
-            # Course correct in the linear sample subspace ---> (sample_removed_one_step_denoising @ self.auxiliary_embedding_matrix.T).abs().max() is very small
-            sample_removed_one_step_denoising = uncorrected_one_step_denoising - (uncorrected_one_step_denoising @ self.sample_subspace_accessor)
-            # NB: this indexing will have to be fixed for structed data...
-            one_step_denoising = sample_removed_one_step_denoising + embedded_samples[..., [-t_idx], :]  # ((one_step_denoising @ self.auxiliary_embedding_matrix.T) - x_samples[:, :, [-t_idx], ...]).abs().max() is very small
-            
+
+            # If required, correct the state. This is equivalent to just replacing the embedded_predicted_residual
+            if self.do_teacher_forcing:
+                # Course correct in the linear sample subspace ---> (sample_removed_one_step_denoising @ self.auxiliary_embedding_matrix.T).abs().max() is very small
+                sample_removed_one_step_denoising = one_step_denoising - (one_step_denoising @ self.sample_subspace_accessor)
+                # NB: this indexing will have to be fixed for structed data...
+                one_step_denoising = sample_removed_one_step_denoising + embedded_samples[..., [-t_idx], :]  # ((one_step_denoising @ self.auxiliary_embedding_matrix.T) - x_samples[:, :, [-t_idx], ...]).abs().max() is very small
+
             # Denoise in the full ambient space for one step: one_step_denoising, early_embedded_x0_pred both of shape [..., 1, ambient space dim]
             t_embedding = t_embeddings[-t_idx][None]
             embedded_predicted_residual = self.residual_model(one_step_denoising, t_embedding, input_vector)
-            uncorrected_one_step_denoising, early_embedded_x0_pred = self.denoise_one_step(t_idx, one_step_denoising, embedded_predicted_residual, turn_off_noise=False)
+            one_step_denoising, early_embedded_x0_pred = self.denoise_one_step(t_idx, one_step_denoising, embedded_predicted_residual, noise_scaler=1.0)
             # early_x0_pred = early_embedded_x0_pred @ self.auxiliary_embedding_matrix.T      # [..., 1, sample dim]
 
             # Only these directions have the actual interpretation of a 'predicted residual'
             predicted_residual = embedded_predicted_residual @ self.auxiliary_embedding_matrix.T
             all_predicted_residuals.append(predicted_residual)
 
-        epsilon_hat = torch.concat(all_predicted_residuals, num_extra_dim)
-        assert x_samples.shape == epsilon_hat.shape
+            subspace_activity = one_step_denoising @ self.auxiliary_embedding_matrix.T
+            all_subspace_trajectories.append(subspace_activity)
 
-        return epsilon_hat
+
+        epsilon_hat = torch.concat(all_predicted_residuals[::-1], num_extra_dim)    # forward (diffusion) time!
+        assert x_samples.shape == epsilon_hat.shape
+        
+        subspace_trajectories = torch.concat(all_subspace_trajectories, num_extra_dim)    # keep as reverse (denoising) time!
+        assert x_samples.shape == subspace_trajectories.shape
+
+        return {'epsilon_hat': epsilon_hat, 'subspace_trajectories': subspace_trajectories}
 
     @torch.no_grad()
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, turn_off_noise: bool = False) -> Dict[str, _T]:
+    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
         """
         Only difference to OneShotDDPMReverseProcess.generate_samples is that the denoising is done in the ambient space, not in the
             sample space. Samples are decoded at the end
@@ -435,8 +435,8 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         if base_samples is None:
             base_samples = torch.randn(*samples_shape, self.sample_ambient_dim, device = self.sigma2xt_schedule.device) * self.base_std
         else:
-            samples_shape = base_samples.shape[:-len(self.sample_shape)]
-            assert tuple(base_samples.shape) == (*samples_shape, *self.sample_shape)
+            samples_shape = base_samples.shape[:-len(self.sample_ambient_dim)]
+            assert tuple(base_samples.shape) == (*samples_shape, *self.sample_ambient_dim)
 
         input_vector = self.input_model(network_input)
         assert tuple(input_vector.shape) == (*samples_shape, self.residual_model.input_size,),\
@@ -449,6 +449,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
 
         embedded_sample_trajectory = []
         early_x0_preds = []
+        all_predicted_residual = []
 
         for t_idx in range(1, self.T + 1):
 
@@ -462,21 +463,24 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
             # predicted_residual = predicted_residual - (predicted_residual @ self.sample_subspace_accessor) + (actual_residual @ self.auxiliary_embedding_matrix)
             ####
 
-            base_samples, early_embedded_x0_pred = self.denoise_one_step(t_idx, base_samples, predicted_residual, turn_off_noise)
+            base_samples, early_embedded_x0_pred = self.denoise_one_step(t_idx, base_samples, predicted_residual, noise_scaler)
             early_x0_pred = early_embedded_x0_pred @ self.auxiliary_embedding_matrix.T      # [..., 1, sample dim]
 
             embedded_sample_trajectory.append(base_samples.detach())
             early_x0_preds.append(early_x0_pred.detach())
+            all_predicted_residual.append(predicted_residual.detach())
         
         embedded_sample_trajectory = torch.concat(embedded_sample_trajectory, -2) # [..., T, sample_ambient_dim]
         sample_trajectory = embedded_sample_trajectory @ self.auxiliary_embedding_matrix.T  # [..., T, dim x]
         early_x0_preds = torch.concat(early_x0_preds, -2) # [..., T, dim x]
+        all_predicted_residual = torch.concat(all_predicted_residual, -2) @ self.auxiliary_embedding_matrix.T
         new_samples = (base_samples.squeeze(-2).detach() @ self.auxiliary_embedding_matrix.T)
 
         return {
             'sample_trajectory': sample_trajectory.cpu(),
             'samples': new_samples.detach().cpu(),
             'early_x0_preds': early_x0_preds.cpu(),
+            'epsilon_hat': all_predicted_residual.detach().cpu(),
         }
 
 
@@ -526,7 +530,7 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
             'epsilon': x_t,
         }
 
-    def residual(self, x_samples: _T, network_input: _T, initial_state: Optional[_T] = None, **kwargs_for_residual_model) -> Dict[str, _T]:
+    def residual(self, x_samples: _T, network_input: _T, initial_state: Optional[_T] = None, kwargs_for_residual_model = {}) -> Dict[str, _T]:
         """
         **Again, hacking the system here**
 
@@ -539,37 +543,18 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
             - output no longer predicts residuals (epsilon_hat above) but gives the network trajectory in the linear subspace of the sames
                 NB: only intended to be used for the simplest tasks!
         """
-        num_extra_dim = len(x_samples.shape) - len(self.sample_shape) - 1 # including time now
-        batch_shape = x_samples.shape[:num_extra_dim]
-        input_vector: _T = self.input_model(network_input)
+        return super(RNNBaselineDDPMReverseProcess, self).residual(
+            x_samples=x_samples, network_input=network_input, initial_state=initial_state, **kwargs_for_residual_model
+        )
 
-        input_vector = input_vector.unsqueeze(-2)
 
-        assert tuple(input_vector.shape) == (*batch_shape, 1, self.residual_model.input_size,), f"Expected input_vector shape to be {(*batch_shape, self.residual_model.input_size)} but got {tuple(input_vector.shape)}"
-        assert tuple(x_samples.shape) == (*batch_shape, self.T, *self.sample_shape), f"Expected x_samples shape to end with {self.sample_space_size} but got {x_samples.shape}"
 
-        t_embeddings = self.time_embeddings(self.t_schedule)
+class PreperatoryLinearSubspaceTeacherForcedDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProcess):
 
-        if initial_state is None:
-            initial_state = torch.randn(*batch_shape, self.sample_ambient_dim, device = self.sigma2xt_schedule.device) * self.base_std
-        else:
-            assert tuple(initial_state.shape) == (*batch_shape, self.sample_ambient_dim), f"Expected initial_state shape to end with {self.sample_ambient_dim} but got {tuple(initial_state.shape)}"
+    def __init__(self, num_prep_steps: bool, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, device='cuda') -> None:
+        super().__init__(seperate_output_neurons, stabilise_nullspace, sample_ambient_dim, sample_shape, sigma2xt_schedule, residual_model, input_model, time_embedding_size, device)
 
-        one_step_denoising = initial_state.unsqueeze(-2) # [..., 1, ambient space dim]
-        all_subspace_trajectories = []
-        
-        for t_idx in range(1, self.T + 1):
-            
-            # Denoise in the full ambient space for one step: one_step_denoising, early_embedded_x0_pred both of shape [..., 1, ambient space dim]
-            t_embedding = t_embeddings[-t_idx][None]
-            embedded_predicted_residual = self.residual_model(one_step_denoising, t_embedding, input_vector)
-            one_step_denoising, early_embedded_x0_pred = self.denoise_one_step(t_idx, one_step_denoising, embedded_predicted_residual, turn_off_noise=False)
 
-            # Only these directions should have MSE done to them
-            subspace_activity = one_step_denoising @ self.auxiliary_embedding_matrix.T
-            all_subspace_trajectories.append(subspace_activity)
-        
-        subspace_trajectories = torch.concat(all_subspace_trajectories, num_extra_dim)
-        assert x_samples.shape == subspace_trajectories.shape
+    def prepare(self, ):
+        pass
 
-        return subspace_trajectories

@@ -103,7 +103,7 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
             self.linking_matrix = orth[:sample_space_size].cpu().numpy()   # [dim y, dim x]
             self.linking_matrix_kernel = orth[sample_space_size:].cpu().numpy()   # [dim x - dim y, dim x]
             self.rotation_matrix = orth.cpu().numpy()   # [dim x, dim x]
-            raise Exception('are you sure you want to do this and not use LinearSubspaceTeacherForcedDDPMReverseProcess...?')
+            # raise Exception('are you sure you want to do this and not use LinearSubspaceTeacherForcedDDPMReverseProcess...?')
         else:
             raise NotImplementedError
         

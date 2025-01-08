@@ -1,0 +1,43 @@
+# Model
+model_name: standard_vectoral
+model_config:
+  recurrence_hidden_layers: [32, 32]
+  time_embedding_size: 16
+  # sample_ambient_dim: 128
+  # rnn_baseline: false
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    asdf: asdf
+  #   stabilise_nullspace: true
+  #   seperate_output_neurons: false
+
+  
+# regularise_epsilon_hat: true
+# residual_regulariser_weight_mean: 1.0
+# residual_regulariser_weight_covar: 1.0
+
+
+# Diffusion
+ultimate_sigma2: 0.06
+starting_sigma2: 0.06
+num_timesteps: 100
+
+
+# Training/logging
+logging_freq: 100
+batch_size: 32
+num_samples: 512
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_a_one_shot_2d"
+
+
+# Task
+task_name: standard_fixed_probability_vectoral
+task_config:
+  sample_size: 2
+  pmf: [1.0]
+  sample_radius: 2.5
+  residual_in_behaviour_plane_only: false
+  polar_sample: false

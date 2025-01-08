@@ -7,7 +7,7 @@ from collections import deque
 
 from purias_utils.util.arguments_yaml import ConfigNamepace
 
-from ddpm.model import DDPMReverseProcessBase
+from ddpm.model import DDPMReverseProcessBase, LinearSubspaceTeacherForcedDDPMReverseProcess
 from ddpm.utils import symmetrize_and_square_axis
 from ddpm import tasks, model
 
@@ -20,6 +20,8 @@ from purias_utils.util.logging import configure_logging_paths
 from purias_utils.util.logging import LoopTimer
 
 from matplotlib import pyplot as plt
+
+from typing import Tuple
 
 
 args = ConfigNamepace.from_yaml_path(sys.argv[1])
@@ -43,6 +45,12 @@ logging_freq = args.logging_freq
 save_base = args.save_base
 task_name = args.task_name
 task_config = args.task_config
+bootstrap_epsilons = args.bootstrap_epsilons
+regularise_epsilon_hat = args.regularise_epsilon_hat
+if bootstrap_epsilons or regularise_epsilon_hat:
+    residual_regulariser_weight_mean = float(args.residual_regulariser_weight_mean)
+    residual_regulariser_weight_covar = float(args.residual_regulariser_weight_covar)
+assert not (regularise_epsilon_hat and bootstrap_epsilons)
 model_name = args.model_name
 model_config = args.model_config
 lr = args.lr
@@ -56,7 +64,9 @@ kl_colors_scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=magma)
 kl_colors_scalarMap.set_array([])
 timer = LoopTimer(num_trials)
 [training_print_path], save_base, _ = configure_logging_paths(save_base, log_suffixes=[f"train"], index_new=True)
-all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
+all_individual_residual_mses = np.zeros([num_trials, num_timesteps - (1 if bootstrap_epsilons else 0)])
+all_residual_regularisation_loss_mean = np.zeros([num_trials, num_timesteps])
+all_residual_regularisation_loss_covar = np.zeros([num_trials, num_timesteps])
 args.write_to_yaml(os.path.join(save_base, 'args.yaml'))
 
 
@@ -76,11 +86,16 @@ task.save_metadata(os.path.join(save_base, 'task_metadata'))
 # Set up model
 residual_model_kwargs = model_config.dict.pop('residual_model_kwargs').dict
 ddpm_model_kwargs = model_config.dict.pop('ddpm_model_kwargs').dict
-ddpm_model: DDPMReverseProcessBase = getattr(model, model_name)(
+ddpm_model, mse_key = getattr(model, model_name)(
     **model_config.dict, residual_model_kwargs=residual_model_kwargs, ddpm_model_kwargs=ddpm_model_kwargs,
     sigma2x_schedule = sigma2x_schedule, sensory_shape = task.sensory_gen.sensory_shape, sample_shape = task.sample_gen.sample_shape,
     device = device
-).to(device)
+)
+
+ddpm_model: DDPMReverseProcessBase
+ddpm_model.to(device)
+mse_key: str
+
 
 
 # Set up training
@@ -107,8 +122,43 @@ plt.savefig(os.path.join(save_base, "sigma_schedule_unrolling.png"))
 # This will get filled in and continuously updated by task.sample_gen.generate_sample_diagnostics
 recent_sample_diagnostics = deque(maxlen=100)
 
-plotting_offset = 1
-plotting_start = 100
+plotting_offset = 0
+plotting_start = 0
+
+
+
+from torch import Tensor as _T
+
+def bootstrapped_epsilon_mse(epsilon_hat: _T, denoising_trajectory: _T, reshaped_a_t_schedule:_T, reshaped_root_b_t_schedule: _T, x_0: _T):
+    """
+    epsilon_hat and denoising_trajectory come in [B, S, T, D] but in reverse direction (i.e. T, T-1, ..., 1)
+    also, epsilon_hat[i] was used to generate denoising_trajectory[i], so we have to do mse of epsilon_hat[i] against denoising_trajectory[i-1]
+    """
+    T = epsilon_hat.shape[-2]
+    reshaped_x_0 = x_0.unsqueeze(-2).repeat(*[1]*(len(x_0.shape)-1), T, 1)
+    
+    reversed_reshaped_a_t_schedule = reshaped_a_t_schedule.flip(-2)
+    reversed_reshaped_root_b_t_schedule = reshaped_root_b_t_schedule.flip(-2)
+
+    epsilon_effective = (denoising_trajectory - (reversed_reshaped_a_t_schedule * reshaped_x_0)) / reversed_reshaped_root_b_t_schedule
+    mse = (epsilon_hat[...,1:,:] - epsilon_effective[...,:-1,:]).square().sum(-1).sqrt()
+
+    return mse
+
+
+def spherical_loss(epsilon_hat: _T):
+    assert len(epsilon_hat.shape) == 4
+
+    # Moments is taken across samples for individual batch items...
+    mean = epsilon_hat.mean(1)
+    demeaned = epsilon_hat - mean.unsqueeze(1)
+    covar = torch.einsum('bstd,bste->bstde',demeaned,demeaned).mean(1)
+
+    # ... used for loss calculation and aggreated across time
+    mean_loss = mean.square().sum(-1).sqrt().mean(0)    # square mag
+    covar_loss = (covar - torch.eye(covar.shape[-1], device = covar.device)[None,None]).square().sum(-1).sum(-1).sqrt().mean(0) # frob diff
+
+    return mean_loss, covar_loss
 
 
 for t in tqdm(range(num_trials)):
@@ -118,30 +168,45 @@ for t in tqdm(range(num_trials)):
     trial_information = task.generate_trial_information(batch_size=batch_size, num_samples=num_samples)
 
     forward_process = ddpm_model.noise(x_0 = trial_information.sample_information.sample_set.to(device).float())
-    epsilon_hat = ddpm_model.residual(
+    epsilon_hat_dict = ddpm_model.residual(
         x_samples = forward_process['x_t'],
         network_input = trial_information.network_inputs,
     )
-    residual_mse = task.sample_gen.mse(epsilon_hat, forward_process['epsilon']) # [batch, samples, time]
+    if bootstrap_epsilons:
+        residual_mse = bootstrapped_epsilon_mse(epsilon_hat_dict['epsilon_hat'], epsilon_hat_dict['subspace_trajectories'], ddpm_model.reshaped_a_t_schedule, ddpm_model.reshaped_root_b_t_schedule, trial_information.sample_information.sample_set.to(device))
+    else:
+        residual_mse = task.sample_gen.mse(epsilon_hat_dict[mse_key], forward_process['epsilon']) # [batch, samples, time]
+
+    total_loss = residual_mse.mean()
+    if bootstrap_epsilons or regularise_epsilon_hat:
+        residual_regularisation_loss_mean, residual_regularisation_loss_covar = spherical_loss(epsilon_hat_dict['epsilon_hat'])
+
+        total_loss += residual_regularisation_loss_mean.mean() * residual_regulariser_weight_mean
+        total_loss += residual_regularisation_loss_covar.mean() * residual_regulariser_weight_covar
 
     optim.zero_grad()
-    total_loss = residual_mse.mean()
     total_loss.backward()
     optim.step()
 
     if t >= plotting_start:
         all_individual_residual_mses[t-plotting_start,:] = residual_mse.detach().cpu().mean(0).mean(0)
+        if bootstrap_epsilons or regularise_epsilon_hat:
+            all_residual_regularisation_loss_mean[t-plotting_start] = residual_regularisation_loss_mean.detach().cpu()
+            all_residual_regularisation_loss_covar[t-plotting_start] = residual_regularisation_loss_covar.detach().cpu()
 
     if (t - plotting_offset) % logging_freq == 0:
-
 
         novel_samples_dict = ddpm_model.generate_samples(
             network_input = trial_information.network_inputs[[0],:],
             samples_shape = [1, num_samples],
-            turn_off_noise = False
+            noise_scaler = 1.0
         )
 
-        fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+        fig, axes = plt.subplots(
+            4 if (bootstrap_epsilons or regularise_epsilon_hat) else 3,
+            4 if isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess) else 3, 
+            figsize=(20 if isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess) else 15, 20 if (bootstrap_epsilons or regularise_epsilon_hat) else 15)
+        )
         
         axes[0,0].set_title('Real sample(s)')
         axes[0,1].set_title('Generated sample(s)')
@@ -154,6 +219,29 @@ for t in tqdm(range(num_trials)):
         task.sample_gen.display_early_x0_pred_timeseries(novel_samples_dict['early_x0_preds'], axes[0,2], kl_colors_scalarMap)
 
         task.task_variable_gen.display_task_variables(trial_information.task_variable_information, axes[1,0], axes[1,1])
+
+        if isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess):
+            
+            # Plot both the forward noising process and the teacher-forced reverse denoising process
+            axes[0,3].plot(*forward_process['x_t'][0,0,:].T.cpu().numpy(), label = 'forward process', color = 'blue')
+            axes[0,3].plot(*epsilon_hat_dict['subspace_trajectories'][0,0,:].T.detach().cpu().numpy(), label = 'teacher forced reverse process', color = 'green')
+            axes[0,3].set_title('Teacher forcing - one sample trajectory')
+            axes[0,3].legend()
+            axes[0,3].set_xlim(-3, 3)
+            axes[0,3].set_ylim(-3, 3)
+
+            axes[1,3].scatter(*epsilon_hat_dict['subspace_trajectories'][0,:,-1].T.detach().cpu().numpy())
+            axes[1,3].set_title('One step teacher-forced denoising')
+            axes[1,3].set_xlim(-3, 3)
+            axes[1,3].set_ylim(-3, 3)
+
+            task.sample_gen.display_early_x0_pred_timeseries(novel_samples_dict['epsilon_hat'].detach().cpu(), axes[2,3], kl_colors_scalarMap)
+            axes[2,3].set_title('$\hat\epsilon$ during generation')
+
+            symmetrize_and_square_axis(axes[0,3])
+            symmetrize_and_square_axis(axes[1,3])
+            symmetrize_and_square_axis(axes[2,3])
+
         
         symmetrize_and_square_axis(axes[1,0])
         symmetrize_and_square_axis(axes[1,1])
@@ -167,13 +255,27 @@ for t in tqdm(range(num_trials)):
         #     recent_sample_diagnostics = recent_sample_diagnostics, axes = axes[2,0]
         # )
 
+        axes[2,0].set_title('Individual timesteps MSE (definition task dependent)')
         if t > plotting_start:
             for h, trace in enumerate(all_individual_residual_mses[:t+1-plotting_start].T):
                 color = kl_colors_scalarMap.to_rgba(h + 1)
                 axes[2,0].plot(trace, color = color)
                 axes[2,1].plot(trace[-int(2 * (t+1-plotting_start) / 3):], color = color)
+            axes[2,2].plot(all_individual_residual_mses[:t+1-plotting_start].mean(-1))
         cax = inset_axes(axes[2,0], width="30%", height=1.,loc=3)
         plt.colorbar(kl_colors_scalarMap, cax = cax, ticks=range(1, num_timesteps, 10), orientation='vertical')
+
+        if bootstrap_epsilons or regularise_epsilon_hat:
+            axes[3,0].set_title('Residual prediction regulariser - mean')
+            axes[3,1].set_title('Residual prediction regulariser - covar')
+            if t > plotting_start:
+                for h in range(num_timesteps):
+                    color = kl_colors_scalarMap.to_rgba(h + 1)
+                    axes[3,0].plot(all_residual_regularisation_loss_mean[:t+1-plotting_start,h], color = color)
+                    axes[3,1].plot(all_residual_regularisation_loss_covar[:t+1-plotting_start,h], color = color)
+                axes[3,2].plot(all_residual_regularisation_loss_mean[:t+1-plotting_start].mean(-1), label = 'mean')
+                axes[3,2].plot(all_residual_regularisation_loss_covar[:t+1-plotting_start].mean(-1), label = 'covar')
+                axes[3,2].legend()
 
         plt.savefig(os.path.join(save_base, "latest_log.png"))
         if (t + 1850) % (logging_freq*100) == 0:

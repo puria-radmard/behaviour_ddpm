@@ -1,0 +1,42 @@
+# Model
+model_name: teacher_forced_vectoral
+model_config:
+  recurrence_hidden_layers: [128]  # weaken model by a lot so that it has to use its nullspace activity
+  time_embedding_size: 16
+  sample_ambient_dim: 128             
+  rnn_baseline: false
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true        # No nullspace actually!
+    seperate_output_neurons: false
+
+  
+# regularise_epsilon_hat: true
+# residual_regulariser_weight_mean: 1.0
+# residual_regulariser_weight_covar: 1.0
+
+
+# Diffusion
+ultimate_sigma2: 0.06
+starting_sigma2: 0.06
+num_timesteps: 100
+
+
+# Training/logging
+logging_freq: 100
+batch_size: 64
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_d_teacher_forced_more_d_bimodal"
+
+
+# Task
+task_name: standard_fixed_probability_vectoral
+task_config:
+  sample_size: 2
+  pmf: [0.6, 0.4]
+  sample_radius: 2.5
+  residual_in_behaviour_plane_only: false
+  polar_sample: false
