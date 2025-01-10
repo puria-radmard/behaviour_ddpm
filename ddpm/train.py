@@ -43,13 +43,13 @@ logging_freq = args.logging_freq
 save_base = args.save_base
 task_name = args.task_name
 task_config = args.task_config
-regularise_epsilon_hat = args.regularise_epsilon_hat
-if regularise_epsilon_hat:
-    residual_regulariser_weight_mean = float(args.residual_regulariser_weight_mean)
-    residual_regulariser_weight_covar = float(args.residual_regulariser_weight_covar)
+regularise_prep_state = args.regularise_prep_state
+if regularise_prep_state:
+    regularise_prep_state_weight = args.regularise_prep_state_weight
 model_name = args.model_name
 model_config = args.model_config
 lr = args.lr
+resume_path = args.resume_path
 
 
 
@@ -61,9 +61,8 @@ kl_colors_scalarMap.set_array([])
 timer = LoopTimer(num_trials)
 [training_print_path], save_base, _ = configure_logging_paths(save_base, log_suffixes=[f"train"], index_new=True)
 all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
-if regularise_epsilon_hat:
-    all_residual_regularisation_loss_mean = np.zeros([num_trials, num_timesteps])
-    all_residual_regularisation_loss_covar = np.zeros([num_trials, num_timesteps])
+if regularise_prep_state:
+    all_prep_state_losses = np.zeros([num_trials])
 args.write_to_yaml(os.path.join(save_base, 'args.yaml'))
 
 
@@ -92,6 +91,9 @@ ddpm_model, mse_key = getattr(model, model_name)(
 ddpm_model: DDPMReverseProcessBase
 ddpm_model.to(device)
 mse_key: str
+
+if resume_path is not None:
+    ddpm_model.load_state_dict(torch.load(resume_path))
 
 
 
@@ -122,22 +124,6 @@ recent_sample_diagnostics = deque(maxlen=100)
 plotting_offset = 0
 plotting_start = 0
 
-from torch import Tensor as _T
-
-def spherical_loss(epsilon_hat: _T):
-    assert len(epsilon_hat.shape) == 4
-
-    # Moments is taken across samples for individual batch items...
-    mean = epsilon_hat.mean(1)
-    demeaned = epsilon_hat - mean.unsqueeze(1)
-    covar = torch.einsum('bstd,bste->bstde',demeaned,demeaned).mean(1)
-
-    # ... used for loss calculation and aggreated across time
-    mean_loss = mean.square().sum(-1).sqrt().mean(0)    # square mag
-    covar_loss = (covar - torch.eye(covar.shape[-1], device = covar.device)[None,None]).square().sum(-1).sum(-1).sqrt().mean(0) # frob diff
-
-    return mean_loss, covar_loss
-
 
 for t in tqdm(range(num_trials)):
 
@@ -153,11 +139,10 @@ for t in tqdm(range(num_trials)):
     residual_mse = task.sample_gen.mse(epsilon_hat_dict[mse_key], forward_process['epsilon']) # [batch, samples, time]
 
     total_loss = residual_mse.mean()
-    if regularise_epsilon_hat:
-        residual_regularisation_loss_mean, residual_regularisation_loss_covar = spherical_loss(epsilon_hat_dict['epsilon_hat'])
 
-        total_loss += residual_regularisation_loss_mean.mean() * residual_regulariser_weight_mean
-        total_loss += residual_regularisation_loss_covar.mean() * residual_regulariser_weight_covar
+    if regularise_prep_state:
+        prep_state_loss = epsilon_hat_dict['postprep_base_samples'].mean(-2).square().sum(-1).sqrt().mean(0)    # [B,S,2] -> mean over samples [B,2] -> mag of mean [B] -> average of that <scalar>
+        total_loss = total_loss + (regularise_prep_state_weight * prep_state_loss)
 
     optim.zero_grad()
     total_loss.backward()
@@ -165,9 +150,8 @@ for t in tqdm(range(num_trials)):
 
     if t >= plotting_start:
         all_individual_residual_mses[t-plotting_start,:] = residual_mse.detach().cpu().mean(0).mean(0)
-        if regularise_epsilon_hat:
-            all_residual_regularisation_loss_mean[t-plotting_start] = residual_regularisation_loss_mean.detach().cpu()
-            all_residual_regularisation_loss_covar[t-plotting_start] = residual_regularisation_loss_covar.detach().cpu()
+        if regularise_prep_state:
+            all_prep_state_losses[t-plotting_start] = prep_state_loss.detach().cpu()
 
     if (t - plotting_offset) % logging_freq == 0:
 
@@ -176,11 +160,12 @@ for t in tqdm(range(num_trials)):
             samples_shape = [1, num_samples],
             noise_scaler = 1.0
         )
-
+        
+        doing_teacher_forcing = isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess)
         fig, axes = plt.subplots(
-            4 if regularise_epsilon_hat else 3,
-            4 if isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess) else 3, 
-            figsize=(20 if isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess) else 15, 20 if regularise_epsilon_hat else 15)
+            3,
+            4 if doing_teacher_forcing else 3, 
+            figsize=(20 if doing_teacher_forcing else 15, 15)
         )
 
         did_prep = 'postprep_base_samples' in novel_samples_dict.keys()
@@ -200,7 +185,7 @@ for t in tqdm(range(num_trials)):
 
         task.task_variable_gen.display_task_variables(trial_information.task_variable_information, axes[1,0], axes[1,1])
 
-        if isinstance(ddpm_model, LinearSubspaceTeacherForcedDDPMReverseProcess):
+        if doing_teacher_forcing:
             
             # Plot both the forward noising process and the teacher-forced reverse denoising process
             axes[0,3].plot(*forward_process['x_t'][0,0,:].T.cpu().numpy(), label = 'forward process', color = 'blue')
@@ -210,17 +195,13 @@ for t in tqdm(range(num_trials)):
             axes[0,3].set_xlim(-3, 3)
             axes[0,3].set_ylim(-3, 3)
 
-            axes[1,3].scatter(*epsilon_hat_dict['subspace_trajectories'][0,:,-1].T.detach().cpu().numpy())
-            axes[1,3].set_title('One step teacher-forced denoising')
-            axes[1,3].set_xlim(-3, 3)
-            axes[1,3].set_ylim(-3, 3)
-
-            task.sample_gen.display_early_x0_pred_timeseries(novel_samples_dict['epsilon_hat'].detach().cpu(), axes[2,3], kl_colors_scalarMap)
-            axes[2,3].set_title('$\hat\epsilon$ during generation')
+            task.sample_gen.display_early_x0_pred_timeseries(novel_samples_dict['epsilon_hat'].detach().cpu(), axes[1,3], kl_colors_scalarMap)
+            axes[1,3].set_title('$\hat\epsilon$ during generation')
 
             symmetrize_and_square_axis(axes[0,3])
             symmetrize_and_square_axis(axes[1,3])
-            symmetrize_and_square_axis(axes[2,3])
+            
+            # axes[2,3] saved for end of prep state regulariser if used....
 
         
         symmetrize_and_square_axis(axes[1,0])
@@ -235,7 +216,9 @@ for t in tqdm(range(num_trials)):
         #     recent_sample_diagnostics = recent_sample_diagnostics, axes = axes[2,0]
         # )
 
-        axes[2,0].set_title('Individual timesteps MSE (definition task dependent)')
+        axes[2,0].set_title('Individual timesteps MSE')
+        axes[2,1].set_title('Individual timesteps MSE (zoomed in)')
+        axes[2,2].set_title('MSE averaged over timesteps')
         if t > plotting_start:
             for h, trace in enumerate(all_individual_residual_mses[:t+1-plotting_start].T):
                 color = kl_colors_scalarMap.to_rgba(h + 1)
@@ -245,21 +228,12 @@ for t in tqdm(range(num_trials)):
         cax = inset_axes(axes[2,0], width="30%", height=1.,loc=3)
         plt.colorbar(kl_colors_scalarMap, cax = cax, ticks=range(1, num_timesteps, 10), orientation='vertical')
 
-        if regularise_epsilon_hat:
-            axes[3,0].set_title('Residual prediction regulariser - mean')
-            axes[3,1].set_title('Residual prediction regulariser - covar')
+        if regularise_prep_state:
+            axes[2,3].set_title('Prep state behaviour activity regulariser')
             if t > plotting_start:
-                for h in range(num_timesteps):
-                    color = kl_colors_scalarMap.to_rgba(h + 1)
-                    axes[3,0].plot(all_residual_regularisation_loss_mean[:t+1-plotting_start,h], color = color)
-                    axes[3,1].plot(all_residual_regularisation_loss_covar[:t+1-plotting_start,h], color = color)
-                axes[3,2].plot(all_residual_regularisation_loss_mean[:t+1-plotting_start].mean(-1), label = 'mean')
-                axes[3,2].plot(all_residual_regularisation_loss_covar[:t+1-plotting_start].mean(-1), label = 'covar')
-                axes[3,2].legend()
+                axes[2,3].plot(all_prep_state_losses[:t+1-plotting_start])
 
         plt.savefig(os.path.join(save_base, "latest_log.png"))
-        if (t + 1850) % (logging_freq*100) == 0:
-            plt.savefig(os.path.join(save_base, f"log_{t}.png"))
         plt.close('all')
 
-        torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state_T{num_timesteps}.mdl"))
+        torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.mdl"))

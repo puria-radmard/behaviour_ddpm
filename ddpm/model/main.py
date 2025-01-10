@@ -129,7 +129,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         return one_step_denoise, early_x0_pred
 
     @abstractmethod
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
+    def generate_samples(self, *_, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
         """
         input_vector of shape [..., <shape Z>]
         If provided, base_samples of shape [..., <shape x>]
@@ -195,7 +195,7 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
         return {'epsilon_hat': epsilon_hat}
 
     @torch.no_grad()
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
+    def generate_samples(self, *_, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0) -> Dict[str, _T]:
         """
         input_vector of shape [..., <shape Z>]
         If provided, base_samples of shape [..., <shape x>]
@@ -334,10 +334,6 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         self.register_buffer('behaviour_nullspace', orth[sample_shape[0]:])             # [extra dims, big space]
         self.register_buffer('behaviour_nullspace_accessor', orth[sample_shape[0]:].T @ orth[sample_shape[0]:]) # [big space, big space]
 
-    def to(self, *args, **kwargs):
-        self.sample_subspace_accessor = self.sample_subspace_accessor.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
-
     def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, noise_scaler: float):
         if self.stabilise_nullspace:
             coeff = (1 - self.euler_alpha - self.base_samples_scaler_schedule[-t_idx]) / self.residual_scaler_schedule[-t_idx]
@@ -406,7 +402,6 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
             subspace_activity = one_step_denoising @ self.auxiliary_embedding_matrix.T
             all_subspace_trajectories.append(subspace_activity)
 
-
         epsilon_hat = torch.concat(all_predicted_residuals[::-1], num_extra_dim)    # forward (diffusion) time!
         assert x_samples.shape == epsilon_hat.shape
         
@@ -416,7 +411,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         return {'epsilon_hat': epsilon_hat, 'subspace_trajectories': subspace_trajectories}
 
     @torch.no_grad()
-    def generate_samples(self, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0, kwargs_for_residual_model = {}) -> Dict[str, _T]:
+    def generate_samples(self, *_, network_input: _T, samples_shape: Optional[List[int]] = None, base_samples: Optional[_T] = None, noise_scaler: float = 1.0, kwargs_for_residual_model = {}, start_t_idx = 1, end_t_idx = None) -> Dict[str, _T]:
         """
         Only difference to OneShotDDPMReverseProcess.generate_samples is that the denoising is done in the ambient space, not in the
             sample space. Samples are decoded at the end
@@ -429,6 +424,9 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         samples of shape [..., <shape x>]
         early_x0_preds of shape [..., T, <shape x>]
         """
+        if end_t_idx is None:
+            end_t_idx = self.T
+        assert (1 <= start_t_idx) and (start_t_idx <= end_t_idx) and (end_t_idx <= self.T)
         
         assert (samples_shape is None) != (base_samples is None)
 
@@ -451,7 +449,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         early_x0_preds = []
         all_predicted_residual = []
 
-        for t_idx in range(1, self.T + 1):
+        for t_idx in range(start_t_idx, end_t_idx + 1):
 
             t_embedding = t_embeddings[-t_idx][None]
 
@@ -477,7 +475,9 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(TeacherForcedDDPMReverseProc
         new_samples = (base_samples.squeeze(-2).detach() @ self.auxiliary_embedding_matrix.T)
 
         return {
+            'end_state': base_samples.squeeze(len(samples_shape)),
             'sample_trajectory': sample_trajectory.cpu(),
+            'embedded_sample_trajectory': embedded_sample_trajectory.cpu(),
             'samples': new_samples.detach().cpu(),
             'early_x0_preds': early_x0_preds.cpu(),
             'epsilon_hat': all_predicted_residual.detach().cpu(),
@@ -574,11 +574,11 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(LinearSubspaceTea
         recent_state = initial_state
         preparatory_trajectory = []
 
-        for t_idx in range(1, self.num_prep_steps):
+        for t_idx in range(self.num_prep_steps):
             
             # NB: this is not actually a residual!
             embedded_predicted_residual = self.residual_model(recent_state, self.prep_time_embedding, input_vector)
-            recent_state, _ = self.denoise_one_step(t_idx, recent_state, embedded_predicted_residual, noise_scaler=1.0)
+            recent_state, _ = self.denoise_one_step(1, recent_state, embedded_predicted_residual, noise_scaler=1.0)
             preparatory_trajectory.append(recent_state)
 
 
@@ -596,10 +596,33 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(LinearSubspaceTea
         residual_dict = super().residual(x_samples, network_input * network_input_mult, prep_dict['postprep_state'], kwargs_for_residual_model)
         return dict(**prep_dict, **residual_dict)
 
-    def generate_samples(self, network_input: _T, samples_shape: List[int], noise_scaler: float = 1.0, kwargs_for_residual_model={}) -> Dict[str, _T]:
+    def generate_samples(self, *_, network_input: _T, samples_shape: List[int], noise_scaler: float = 1.0, kwargs_for_residual_model={}, start_t_idx = 1, end_t_idx = None) -> Dict[str, _T]:
         prep_dict = self.prepare(network_input, samples_shape)
         network_input_mult = 1.0 if self.network_input_during_diffusion else 0.0
-        samples_dict = super().generate_samples(network_input * network_input_mult, None, prep_dict['postprep_state'], noise_scaler, kwargs_for_residual_model)
+        samples_dict = super().generate_samples(
+            network_input = network_input * network_input_mult,
+            samples_shape = None,
+            base_samples = prep_dict['postprep_state'],
+            noise_scaler = noise_scaler,
+            kwargs_for_residual_model = kwargs_for_residual_model,
+            start_t_idx = start_t_idx,
+            end_t_idx = end_t_idx
+        )
         return dict(**prep_dict, **samples_dict)
+
+
+
+class MultipleEpochsLinearSubspaceTeacherForcedDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProcess):
+    """
+    num_prep_steps is now a list (in order)
+    """
+
+    def __init__(self, num_prep_steps: List[int], network_input_during_diffusion: bool, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, device='cuda') -> None:
+
+        super().__init__(seperate_output_neurons, stabilise_nullspace, sample_ambient_dim, sample_shape, sigma2xt_schedule, residual_model, input_model, time_embedding_size, device)
+
+        self.register_parameter('prep_time_embedding', nn.Parameter(torch.randn(len(num_prep_steps), time_embedding_size), requires_grad = True))
+        self.network_input_during_diffusion = network_input_during_diffusion
+        self.num_prep_steps = num_prep_steps
 
 

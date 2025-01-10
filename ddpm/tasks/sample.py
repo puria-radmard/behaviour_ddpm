@@ -135,14 +135,14 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         import pdb; pdb.set_trace(header = 'get pmf by taking closest to report_feature')
         return closest_rate, {'magnitude': magnitudes}
 
-    def display_samples(self, sample_set: Union[SwapSampleInformation, _T], axes: Axes) -> None:
+    def display_samples(self, sample_set: Union[SwapSampleInformation, _T], axes: Axes, label = None) -> None:
         if isinstance(sample_set, SwapSampleInformation):
             samples = sample_set.sample_set[0] @ self.linking_matrix.T
             c = sample_set.item_indices[0]
         else:
             samples = sample_set[0].cpu().numpy() @ self.linking_matrix.T
             c = None
-        axes.scatter(samples[:, 0], samples[:, 1], alpha=0.5, s=1, c=c)
+        axes.scatter(samples[:, 0], samples[:, 1], alpha=0.5, s=1, c=c, label = label)
         axes.add_patch(plt.Circle((0, 0), self.sample_radius, color='red', fill = False))
     
     def display_early_x0_pred_timeseries(self, early_preds_set: _T, axes: Axes, cmap: ScalarMappable) -> None:

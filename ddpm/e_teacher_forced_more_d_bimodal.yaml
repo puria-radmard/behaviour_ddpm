@@ -9,10 +9,8 @@ model_config:
   ddpm_model_kwargs:
     num_prep_steps: 20
     network_input_during_diffusion: true
-    stabilise_nullspace: true        # No nullspace actually!
+    stabilise_nullspace: true
     seperate_output_neurons: false
-
-
 
 # Diffusion
 ultimate_sigma2: 0.06

@@ -1,7 +1,7 @@
 # Model
 model_name: teacher_forced_vectoral_with_prep_time
 model_config:
-  recurrence_hidden_layers: [128]  # weaken model by a lot so that it has to use its nullspace activity
+  recurrence_hidden_layers: []  # weaken model even more --> RNN
   time_embedding_size: 16
   sample_ambient_dim: 128             
   residual_model_kwargs:
@@ -12,6 +12,11 @@ model_config:
     stabilise_nullspace: true
     seperate_output_neurons: false
 
+
+resume_path: /homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_e2_teacher_forced_more_d_bimodal_weaker_0/state.mdl
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.1
 
 
 # Diffusion
@@ -26,14 +31,14 @@ batch_size: 64
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_d_teacher_forced_more_d_unimodal"
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_e2_teacher_forced_more_d_bimodal_weaker"
 
 
 # Task
 task_name: standard_fixed_probability_vectoral
 task_config:
   sample_size: 2
-  pmf: [1.0]
+  pmf: [0.6, 0.4]                                 # only difference to previous!
   sample_radius: 2.5
   residual_in_behaviour_plane_only: false
   polar_sample: false
