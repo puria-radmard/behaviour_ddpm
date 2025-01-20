@@ -1,0 +1,39 @@
+# Model
+model_name: mnist_counting_model
+model_config:
+  recurrence_hidden_layers: [64]
+  time_embedding_size: 16
+  sample_ambient_dim: 64
+  input_shape: 4                  # Epoch embedding size
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.1
+
+task_name: mnist_counting_task
+task_variable_gen_kwargs:
+  max_wait_dur: 152
+  prebuzzer_dur: 6
+  buzzer_dur: 3
+  class_dur: 5
+
+vae_base_path: /homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/mnist/vae/z5_run_0
+z_dim: 5
+
+
+# Diffusion
+ultimate_sigma2: 0.06
+starting_sigma2: 0.06
+num_timesteps: 100
+
+# Training/logging
+logging_freq: 100
+num_samples: 2048
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_mnist_20250114/run_b_counter"

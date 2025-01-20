@@ -1,6 +1,7 @@
 import numpy as np
 
-def symmetrize_and_square_axis(axes, min_size = None):
+
+def symmetrize_and_square_axis(axes, min_size=None):
     x_max = np.max(np.abs(axes.get_xlim()))
     y_max = np.max(np.abs(axes.get_ylim()))
     xy_max = max(x_max, y_max)

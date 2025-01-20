@@ -1,0 +1,41 @@
+# This is not multiepoch prep - this is 
+model_name: teacher_forced_vectoral_with_prep_time
+model_config:
+  recurrence_hidden_layers: [128]  # weaken model by a lot so that it has to use its nullspace activity
+  time_embedding_size: 16
+  sample_ambient_dim: 128             
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    num_prep_steps: 20
+    network_input_during_diffusion: false
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.1
+
+
+# Diffusion -- reduced even further from before!
+ultimate_sigma2: 0.15
+starting_sigma2: 0.15
+num_timesteps: 50
+
+
+# Training/logging
+logging_freq: 100
+batch_size: 64
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_h3_teacher_forced_causal_inference_memory"
+
+
+# Task
+task_name: vectoral_even_causal_inference
+task_config:
+  sample_size: 2
+  residual_in_behaviour_plane_only: false
+  min_margin_div_pi: 0.66667
+  sample_radius: 2.5

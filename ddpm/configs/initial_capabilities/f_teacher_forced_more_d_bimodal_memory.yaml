@@ -13,7 +13,7 @@ model_config:
     seperate_output_neurons: false
 
 
-resume_path: /homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_f_teacher_forced_more_d_bimodal_memory_1/state.mdl
+# resume_path: /homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_f_teacher_forced_more_d_bimodal_memory_1/state.mdl
 regularise_prep_state: true
 regularise_prep_state_weight: 0.1
 
@@ -37,7 +37,7 @@ save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_l
 task_name: standard_fixed_probability_vectoral
 task_config:
   sample_size: 2
-  pmf: [0.6, 0.4]                                 # only difference to previous!
+  pmf: [0.6, 0.4]
   sample_radius: 2.5
   residual_in_behaviour_plane_only: false
   polar_sample: false
