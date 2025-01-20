@@ -22,11 +22,16 @@ class InputModelBlock(nn.Module):
         ), f"InputModelBlock can only currently handle the identity mapping. Cannot have sensory_shape = {sensory_shape} and network_input_size = {network_input_size}"
         super().__init__()
 
-    def forward(self, x: _T) -> _T:
+    def add_timesteps(self, x: _T, num_timesteps: int) -> _T:
+        assert x.shape[-1] == self.network_input_size
+        extra_dims = len(x.shape) - 1
+        return x[...,None,:].repeat(*[1]*extra_dims, num_timesteps, 1)
+
+    def forward(self, x: _T, num_timesteps: int) -> _T:
         assert (
             tuple(x.shape[-len(self.sensory_shape) :]) == self.sensory_shape
         ), f"Expected inputs ending with shape {self.sensory_shape}, got shape {x.shape}"
-        return x.to(self.device)
+        return self.add_timesteps(x, num_timesteps).to(self.device)
 
 
 class AllowIndexInputModelBlock(InputModelBlock):
@@ -46,7 +51,7 @@ class AllowIndexInputModelBlock(InputModelBlock):
             num_indices, underlying_input_block.network_input_size
         )
 
-    def forward(self, x: _T) -> _T:
+    def forward(self, x: _T, num_timesteps: int) -> _T:
         if tuple(x.shape[-len(self.sensory_shape) :]) == self.sensory_shape:
             ret = self.underlying_input_block(x)
         else:
@@ -54,4 +59,5 @@ class AllowIndexInputModelBlock(InputModelBlock):
                 x.shape[-1] == 1
             ), f"AllowIndexInputModelBlock expects inputs with shape ending in either {self.sensory_shape} or {[1]}, not {x.shape}"
             ret = self.index_embeddings(x.to(self.device))[..., 0, :]
+            ret = self.add_timesteps(x, num_timesteps)
         return ret

@@ -1,0 +1,8 @@
+# 20250120
+# Instead of just one 2D sample at the end of the diffusion, this model will dedicate 2N dimensions to sampling, 
+# resulting in N parallel samples
+
+# Main consideration to make: previous difficulties in getting a super-vanilla RNN to work should now be fixed,
+# hopefully
+
+

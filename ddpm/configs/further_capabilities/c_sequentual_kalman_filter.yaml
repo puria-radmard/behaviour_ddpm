@@ -1,0 +1,10 @@
+# 20250120
+# Now, we have sequential sampling again, except the distribution changes in a Markovian way
+# To train, we do unfortunately have to run the full trajectory, i.e. 50 x num LDS steps
+
+# XXX: NB: the above number of timesteps is based on the trick in b1 working, AND that the trajectory
+# is limited to regions of high base distribution likelihood
+
+# XXX: at each step there is a single mode, so we should do this with a super-vanilla RNN
+# This should definitely work, it's just a matter of whether it will work for repeated diffusion case
+# There is nothing special about denoising here: KF variance is the same for all trajectories

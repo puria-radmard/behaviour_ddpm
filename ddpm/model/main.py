@@ -308,7 +308,7 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
             predicted_residual = self.residual_model(
                 base_samples,
                 t_embedding,
-                input_vectors[..., -t_idx, :],  # TODO: fix this with a method!
+                input_vectors[..., [-t_idx], :],  # TODO: fix this with a method!
             )
 
             base_samples, early_x0_pred = self.denoise_one_step(
@@ -568,7 +568,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             # Denoise in the full ambient space for one step: one_step_denoising, early_embedded_x0_pred both of shape [..., 1, ambient space dim]
             t_embedding = t_embeddings[-t_idx][None]
             embedded_predicted_residual = self.residual_model(
-                one_step_denoising, t_embedding, input_vectors[..., -t_idx, :]
+                one_step_denoising, t_embedding, input_vectors[..., [-t_idx], :]
             )
             one_step_denoising, early_embedded_x0_pred = self.denoise_one_step(
                 t_idx, one_step_denoising, embedded_predicted_residual, noise_scaler=1.0
@@ -628,7 +628,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
         assert (
             (1 <= start_t_idx) and (start_t_idx <= end_t_idx) and (end_t_idx <= self.T)
         )
-        num_timesteps = end_t_idx - start_t_idx
+        num_timesteps = end_t_idx - start_t_idx + 1
 
         assert (samples_shape is None) != (base_samples is None)
 
@@ -661,13 +661,13 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
         embedded_sample_trajectory = []
         early_x0_preds = []
         all_predicted_residual = []
-
+        
         for t_idx in range(start_t_idx, end_t_idx + 1):
 
             t_embedding = t_embeddings[-t_idx][None]
 
             predicted_residual = self.residual_model(
-                base_samples, t_embedding, input_vectors[..., -t_idx, :]
+                base_samples, t_embedding, input_vectors[..., [-t_idx], :]
             )
 
             #### XXX CHECK IF DYNAMICS ACTUALLY WORK
@@ -898,7 +898,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
 
             # NB: this is not actually a residual!
             embedded_predicted_residual = self.residual_model(
-                recent_state, self.prep_time_embedding, input_vectors[..., -t_idx, :]
+                recent_state, self.prep_time_embedding, input_vectors[..., [-t_idx], :]
             )
             recent_state, _ = self.denoise_one_step(
                 1, recent_state, embedded_predicted_residual, noise_scaler=1.0

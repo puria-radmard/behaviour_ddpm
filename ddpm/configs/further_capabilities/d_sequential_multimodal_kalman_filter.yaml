@@ -1,0 +1,6 @@
+# 20250120
+# Now, we have sequential sampling again, except the distribution changes in a Markovian *and multimodal* way
+# We will have to use parallel sampling...
+
+# Have to think about this a bit - the probability mass vector is another dynamic variable
+# The samples we draw for teaching diffusion depend on this calculation

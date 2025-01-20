@@ -1,0 +1,10 @@
+# 20250120
+# Instead of just one 2D sample at the end of the diffusion, this model will renoise and repeat
+# See Cristina's paper!
+
+# As an initial try, we use the same 50 step schedule over and over and `hope` that the maintained high std 
+# at the start is enough to noise the previous sample enough (Cristina's paper had a full *period* of 100 timesteps)
+
+# !!! XXX: This means that we don't really need to train anything new, we should be able to sample like this from existing models,
+# given that we just repeat the generate sample step, using the last state as initial states when needed
+# ---> do this first!

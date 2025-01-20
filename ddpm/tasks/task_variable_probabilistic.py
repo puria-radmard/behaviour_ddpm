@@ -105,7 +105,7 @@ class StandardCausalInferenceTaskVariableGenerator(TaskVariableGenerator):
 
 
 
-class StandardCausalInferenceTaskVariableGenerator(StandardCausalInferenceTaskVariableGenerator):
+class WeightedCausalInferenceTaskVariableGenerator(StandardCausalInferenceTaskVariableGenerator):
     """
     Same as above, except each stimulus also has a precision.
     
@@ -136,3 +136,5 @@ class StandardCausalInferenceTaskVariableGenerator(StandardCausalInferenceTaskVa
             ret["report_features"][is_close_mask, 1]
             + 0.5 * report_features_distance[is_close_mask]
         )
+
+        raise NotImplementedError
