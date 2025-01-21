@@ -8,3 +8,9 @@
 # !!! XXX: This means that we don't really need to train anything new, we should be able to sample like this from existing models,
 # given that we just repeat the generate sample step, using the last state as initial states when needed
 # ---> do this first!
+
+
+
+# 20250121
+# Sequential sampling with a single-sample trained network worked!
+# Just use the previous sample as the base sample for the next denoising process 
