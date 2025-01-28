@@ -237,7 +237,7 @@ for t in tqdm(range(num_trials)):
             trial_information.task_variable_information, axes[1, 0], axes[1, 1]
         )
 
-        if doing_teacher_forcing:
+        if doing_teacher_forcing and 'parallel' not in task_name:
 
             # Plot both the forward noising process and the teacher-forced reverse denoising process
             axes[0, 3].plot(

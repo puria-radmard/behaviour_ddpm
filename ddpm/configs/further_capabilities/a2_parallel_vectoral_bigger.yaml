@@ -1,18 +1,12 @@
-# 20250120
-# Instead of just one 2D sample at the end of the diffusion, this model will dedicate 2N dimensions to sampling, 
-# resulting in N parallel samples
-
-# Main consideration to make: previous difficulties in getting a super-vanilla RNN to work should now be fixed,
-# hopefully we can just use the basic architecture....
-
-# Start with the two layer model now anyway...
+# 20250121
+# Make network bigger...
 
 
 model_name: teacher_forced_vectoral
 model_config:
-  recurrence_hidden_layers: [128]
+  recurrence_hidden_layers: [200]
   time_embedding_size: 16
-  sample_ambient_dim: 128             
+  sample_ambient_dim: 200             
   residual_model_kwargs:
     nonlin_first: true
   ddpm_model_kwargs:
@@ -36,7 +30,7 @@ batch_size: 64
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_further_20250120/run_a2_parallel_vectoral"
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_further_20250120/run_a2_parallel_vectoral_bigger"
 
 
 # Task

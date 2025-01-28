@@ -1,12 +1,5 @@
-# 20250120
-# Instead of just one 2D sample at the end of the diffusion, this model will dedicate 2N dimensions to sampling, 
-# resulting in N parallel samples
-
-# Main consideration to make: previous difficulties in getting a super-vanilla RNN to work should now be fixed,
-# hopefully we can just use the basic architecture....
-
-# Start with the two layer model now anyway...
-
+# 20250122
+# Reduce number of parallel samples...
 
 model_name: teacher_forced_vectoral
 model_config:
@@ -36,13 +29,13 @@ batch_size: 64
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_further_20250120/run_a2_parallel_vectoral"
+save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_further_20250120/run_a3_parallel_vectoral_fewer"
 
 
 # Task
 task_name: vectoral_even_causal_inference_parallel
 task_config:
-  num_parallel_samples: 16
+  num_parallel_samples: 3
   sample_size: 2
   residual_in_behaviour_plane_only: false
   min_margin_div_pi: 0.66667
