@@ -92,6 +92,7 @@ def indexing_cue_vectoral(sample_size, n_items, **sample_kwargs):
 
 
 def probe_cue_vectoral(sample_size, n_items, **sample_kwargs):
+    raise NotImplementedError('probe_cue_vectoral needs reworking!')
     task_variable_gen = ZeroTemperatureSwapProbabilityTaskVariableGenerator(n_items)
     sensory_gen = ProbeCuingSensoryGenerator(n_items)
     polar_sample = sample_kwargs.pop("polar_sample")

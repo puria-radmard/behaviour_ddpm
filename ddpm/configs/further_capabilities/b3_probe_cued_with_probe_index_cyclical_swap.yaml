@@ -1,0 +1,12 @@
+# 20250203
+# Basic version of Mallett 2022 task with more swapping to nearby items (in probe space)
+# Items are fed in as an *ordered* set of colours
+  # These are coordinates on the unit circle
+  # A location (index) may be unoccupied, in which case this is just zero
+# Probes are fed in as the index of this ordered set
+
+# Geometry in probe space is defined as cyclically 
+# If a probe location is unoccupied, we do not include that in the swap function and instead
+  # redistribute swap probability to the remaining items
+
+# TODO: later, test this model by probing an unoccupied item!
