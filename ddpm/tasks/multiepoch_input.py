@@ -9,13 +9,13 @@ class MultiEpochSensoryGenerator(ABC):
     """
     Can generate sensory inputs as vectoral data or as images
 
-    Outputs are tensor with shape [... self.prep_sensory_shape[i]] or [... self.diffusion_sensory_shape]
+    Outputs are tensor with shape [... self.prep_sensory_shape[i]] or [... self.diffusion_sensory_shapes[i]]
 
     XXX images only really works with time varying case!
     """
 
     prep_sensory_shape: List[List[int]]
-    diffusion_sensory_shape: List[int]
+    diffusion_sensory_shapes: List[List[int]]
     required_task_variable_keys: Set[str]
 
     task_metadata = {}
@@ -25,7 +25,7 @@ class MultiEpochSensoryGenerator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         raise NotImplementedError
 
 
@@ -33,7 +33,7 @@ class DelayedIndexCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
     """
     Prep epoch 1: provide report dimensions as cartestians
     Prep epoch 2: provide just the index
-    Diffusion epoch: nothing (but pass as zeros of same shape as prep epoch 1)
+    Diffusion epoch 1: nothing (but pass as zeros of same shape as prep epoch 1)
     """
 
     def __init__(self, num_items: int) -> None:
@@ -47,7 +47,7 @@ class DelayedIndexCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
                 1,
             ],
         ]
-        self.diffusion_sensory_shape = [num_items * 2]
+        self.diffusion_sensory_shapes = [[num_items * 2]]
 
     def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["report_features_cart"].shape[0]
@@ -62,6 +62,6 @@ class DelayedIndexCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
         index = variable_dict["cued_item_idx"].unsqueeze(-1)
         return [flattened_coords, index]
 
-    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["probe_features_cart"].shape[0]
-        return torch.zeros(batch_size, self.num_items * 2)
+        return [torch.zeros(batch_size, self.num_items * 2)]

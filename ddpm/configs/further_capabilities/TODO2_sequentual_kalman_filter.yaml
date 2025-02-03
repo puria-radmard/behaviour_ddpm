@@ -8,3 +8,8 @@
 # XXX: at each step there is a single mode, so we should do this with a super-vanilla RNN
 # This should definitely work, it's just a matter of whether it will work for repeated diffusion case
 # There is nothing special about denoising here: KF variance is the same for all trajectories
+
+# 20250203 XXX: update to idea - train this with a single KF-timestep at a time,
+# giving time for sample information to `soak in` from sample subspace into the nullspace
+# Nullspace is initialised randomly, so that no information is carried from there!
+

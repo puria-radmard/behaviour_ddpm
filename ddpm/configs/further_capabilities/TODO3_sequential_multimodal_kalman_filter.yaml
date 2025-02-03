@@ -4,3 +4,6 @@
 
 # Have to think about this a bit - the probability mass vector is another dynamic variable
 # The samples we draw for teaching diffusion depend on this calculation
+
+# 20250203 XXX: not doing this for now - just focus on version of regular KF where the network actually
+# depends on its past samples

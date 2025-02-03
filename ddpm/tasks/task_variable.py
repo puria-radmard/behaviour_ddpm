@@ -242,6 +242,7 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         assert 0.0 < correct_probability < 1.0
         self.correct_probability = correct_probability
         self.prep_epoch_durations = [stimulus_exposure_duration, index_duration]
+        self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         """
@@ -266,4 +267,5 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
             "swap_probabilities": probability_vector,
             "cued_item_idx": selected_item,
             "prep_epoch_durations": self.prep_epoch_durations,
+            "diffusion_epoch_durations": self.diffusion_epoch_durations
         }

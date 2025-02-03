@@ -102,6 +102,7 @@ class ClassificationTaskVariableGenerator(TaskVariableGenerator):
     def __init__(self, stimulus_exposure_duration: int, num_classes: int = 10) -> None:
         self.task_variable_keys = {"class_probabilities", "selected_classes"}
         self.prep_epoch_durations = [stimulus_exposure_duration]
+        self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
         self.num_classes = num_classes
 
     def generate_variable_dict(self, batch_size: int, *args, **kwargs) -> Dict[str, _T]:
@@ -112,6 +113,7 @@ class ClassificationTaskVariableGenerator(TaskVariableGenerator):
             "selected_classes": selected_item,
             "class_probabilities": class_probabilities,
             "prep_epoch_durations": self.prep_epoch_durations,
+            "diffusion_epoch_durations": self.diffusion_epoch_durations,
         }
 
     def display_task_variables(
@@ -194,9 +196,11 @@ class TimestepCounterSensoryGenerator(MultiEpochSensoryGenerator):
                 1,
             ]
         ] * 4  # pre-buzzer, buzzer, wait, buzzer
-        self.diffusion_sensory_shape = [
-            1,
-        ]  # Still an index!
+        self.diffusion_sensory_shapes = [
+            [
+                1,
+            ]
+        ]   # Still an index!
         self.required_task_variable_keys = {
             "class_probabilities"
         }  # Only needed for batch size really!
@@ -209,29 +213,29 @@ class TimestepCounterSensoryGenerator(MultiEpochSensoryGenerator):
         singleton_batch_index = torch.ones(1, 1)
         return [(singleton_batch_index * idx).long() for idx in [0, 1, 2, 1]]
 
-    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["class_probabilities"].shape[0]
         assert (
             batch_size == 1
         ), "TimestepCounterSensoryGenerator currently does not support batch_size > 1"
-        return (torch.ones(1, 1) * 3).long()
+        return [(torch.ones(1, 1) * 3).long()]
 
 
 class ClassificationSensoryGenerator(MultiEpochSensoryGenerator):
     """
-    Class indices during prep time, then a diffuse indice
+    Class indices during prep time, then a diffuse indexs
     """
 
     def __init__(self, num_classes: int = 10) -> None:
         super().__init__()
         self.prep_sensory_shape = [[1]]
-        self.diffusion_sensory_shape = [1]
+        self.diffusion_sensory_shapes = [[1]]
         self.num_classes = num_classes
         self.required_task_variable_keys = {"selected_classes"}
 
     def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         return [variable_dict["selected_classes"].unsqueeze(1).int()]
 
-    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> _T:
+    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["selected_classes"].shape[0]
-        return (torch.ones(batch_size, 1) * (self.num_classes)).int()
+        return [(torch.ones(batch_size, 1) * (self.num_classes)).int()]

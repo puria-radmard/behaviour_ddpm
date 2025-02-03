@@ -15,7 +15,7 @@ from purias_utils.util.arguments_yaml import ConfigNamepace
 from ddpm.model.multiepoch_models import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
-from sampling_ddpm.ddpm.utils.plotting import symmetrize_and_square_axis
+from ddpm.utils.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
 from ddpm.tasks.multiepoch_tasks import MultiEpochDiffusionTask
 
@@ -165,6 +165,7 @@ for t in tqdm(range(num_trials)):
         prep_network_inputs=trial_information.prep_network_inputs,
         diffusion_network_inputs=trial_information.diffusion_network_inputs,
         prep_epoch_durations=trial_information.prep_epoch_durations,
+        diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
     )
     residual_mse = task.sample_gen.mse(
         epsilon_hat_dict[mse_key], forward_process["epsilon"]
@@ -196,10 +197,13 @@ for t in tqdm(range(num_trials)):
 
         novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
             prep_network_inputs=[
-                ni[[0]] for ni in trial_information.prep_network_inputs
+                pni[[0]] for pni in trial_information.prep_network_inputs
             ],
-            diffusion_network_inputs=trial_information.diffusion_network_inputs[[0]],
+            diffusion_network_inputs=[
+                dni[[0]] for dni in trial_information.diffusion_network_inputs
+            ],
             prep_epoch_durations=trial_information.prep_epoch_durations,
+            diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
             samples_shape=[1, num_samples],
             noise_scaler=1.0,
         )

@@ -53,11 +53,11 @@ class AllowIndexInputModelBlock(InputModelBlock):
 
     def forward(self, x: _T, num_timesteps: int) -> _T:
         if tuple(x.shape[-len(self.sensory_shape) :]) == self.sensory_shape:
-            ret = self.underlying_input_block(x)
+            ret = self.underlying_input_block(x, num_timesteps)
         else:
             assert (
                 x.shape[-1] == 1
             ), f"AllowIndexInputModelBlock expects inputs with shape ending in either {self.sensory_shape} or {[1]}, not {x.shape}"
             ret = self.index_embeddings(x.to(self.device))[..., 0, :]
-            ret = self.add_timesteps(x, num_timesteps)
+            ret = self.add_timesteps(ret, num_timesteps)
         return ret
