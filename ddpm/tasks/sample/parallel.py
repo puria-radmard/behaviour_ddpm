@@ -12,7 +12,7 @@ from typing import Dict, Tuple, Deque, Optional, Union
 from matplotlib.pyplot import Axes
 from matplotlib.cm import ScalarMappable
 
-from ddpm.tasks.sample import ExampleSampleGenerator, VectoralEmbeddedExampleSampleGenerator, SwapSampleInformation
+from sampling_ddpm.ddpm.tasks.sample.base import ExampleSampleGenerator, VectoralEmbeddedExampleSampleGenerator, SwapSampleInformation
 
 
 

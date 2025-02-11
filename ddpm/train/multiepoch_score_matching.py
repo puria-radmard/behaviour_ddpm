@@ -12,12 +12,12 @@ from collections import deque
 
 from purias_utils.util.arguments_yaml import ConfigNamepace
 
-from ddpm.model.multiepoch_models import (
+from sampling_ddpm.ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
 from ddpm.utils.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
-from ddpm.tasks.multiepoch_tasks import MultiEpochDiffusionTask
+from sampling_ddpm.ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
 
 
 import matplotlib.cm as cmx
@@ -93,6 +93,7 @@ ddpm_model, mse_key = getattr(model, model_name)(
     ddpm_model_kwargs=ddpm_model_kwargs,
     sigma2x_schedule=sigma2x_schedule,
     prep_sensory_shape=task.sensory_gen.prep_sensory_shape,
+    underlying_sensory_shape=task.sensory_gen.underlying_sensory_shape,
     sample_shape=task.sample_gen.sample_shape,
     device=device,
 )
@@ -195,18 +196,19 @@ for t in tqdm(range(num_trials)):
 
     if (t - plotting_offset) % logging_freq == 0:
 
-        novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
-            prep_network_inputs=[
-                pni[[0]] for pni in trial_information.prep_network_inputs
-            ],
-            diffusion_network_inputs=[
-                dni[[0]] for dni in trial_information.diffusion_network_inputs
-            ],
-            prep_epoch_durations=trial_information.prep_epoch_durations,
-            diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
-            samples_shape=[1, num_samples],
-            noise_scaler=1.0,
-        )
+        with torch.no_grad():
+            novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
+                prep_network_inputs=[
+                    pni[[0]] for pni in trial_information.prep_network_inputs
+                ],
+                diffusion_network_inputs=[
+                    dni[[0]] for dni in trial_information.diffusion_network_inputs
+                ],
+                prep_epoch_durations=trial_information.prep_epoch_durations,
+                diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
+                samples_shape=[1, num_samples],
+                noise_scaler=1.0,
+            )
 
         fig, axes = plt.subplots(2, 5, figsize=(25, 10))
 

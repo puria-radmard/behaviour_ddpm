@@ -9,9 +9,9 @@ from typing import Dict, Tuple, Deque, Optional, Union, List
 
 from matplotlib.pyplot import Axes
 
-from ddpm.tasks.task_variable import TaskVariableGenerator
-from ddpm.tasks.sample import ExampleSampleGenerator, SwapSampleInformation
-from ddpm.tasks.multiepoch_input import MultiEpochSensoryGenerator
+from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator
+from sampling_ddpm.ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
+from sampling_ddpm.ddpm.tasks.input.multiepoch import MultiEpochSensoryGenerator
 
 from ddpm.mnist.vae import MNISTVAE
 
@@ -135,6 +135,7 @@ class ClassificationPlusMinusTaskVariableGenerator(ClassificationTaskVariableGen
             "selected_classes": selected_item,
             "class_probabilities": class_probabilities,
             "prep_epoch_durations": self.prep_epoch_durations,
+            "diffusion_epoch_durations": self.diffusion_epoch_durations,
         }
 
 
@@ -191,6 +192,7 @@ class TimestepCounterSensoryGenerator(MultiEpochSensoryGenerator):
 
     def __init__(self) -> None:
         super().__init__()
+        self.underlying_sensory_shape = [[1]]
         self.prep_sensory_shape = [
             [
                 1,
@@ -230,6 +232,7 @@ class ClassificationSensoryGenerator(MultiEpochSensoryGenerator):
         super().__init__()
         self.prep_sensory_shape = [[1]]
         self.diffusion_sensory_shapes = [[1]]
+        self.underlying_sensory_shape = [[1]]
         self.num_classes = num_classes
         self.required_task_variable_keys = {"selected_classes"}
 

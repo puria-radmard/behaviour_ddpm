@@ -19,7 +19,7 @@ from purias_utils.util.logging import LoopTimer
 
 from matplotlib import pyplot as plt
 
-from ddpm.model.multiepoch_models import (
+from sampling_ddpm.ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
 
@@ -178,18 +178,19 @@ for t in tqdm(range(num_trials)):
         all_prep_state_losses[t - plotting_start] = prep_state_loss.detach().cpu()
 
     if (t - plotting_offset) % logging_freq == 0:
-
-        novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
-            prep_network_inputs=[
-                ni[[0], :16] for ni in trial_information.prep_network_inputs
-            ],
-            diffusion_network_inputs=trial_information.diffusion_network_inputs[
-                [0], :16
-            ],
-            prep_epoch_durations=trial_information.prep_epoch_durations,
-            samples_shape=[1, 16],
-            noise_scaler=1.0,
-        )
+        
+        with torch.no_grad():
+            novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
+                prep_network_inputs=[
+                    ni[[0], :16] for ni in trial_information.prep_network_inputs
+                ],
+                diffusion_network_inputs=trial_information.diffusion_network_inputs[
+                    [0], :16
+                ],
+                prep_epoch_durations=trial_information.prep_epoch_durations,
+                samples_shape=[1, 16],
+                noise_scaler=1.0,
+            )
 
         fig, axes = plt.subplots(2, 3, figsize=(15, 10))
 

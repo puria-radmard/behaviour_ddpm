@@ -6,10 +6,11 @@ import numpy as np
 
 from dataclasses import dataclass
 
-from ddpm.tasks.sample import ExampleSampleGenerator, SwapSampleInformation
-from ddpm.tasks.main import DiffusionTask
-from ddpm.tasks.task_variable import TaskVariableGenerator
-from ddpm.tasks.multiepoch_input import MultiEpochSensoryGenerator
+from sampling_ddpm.ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
+from sampling_ddpm.ddpm.tasks.main.base import DiffusionTask
+from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator
+from sampling_ddpm.ddpm.tasks.variable.preinitialised import InitialisedSampleSpaceTaskVariableGenerator
+from sampling_ddpm.ddpm.tasks.input.multiepoch import MultiEpochSensoryGenerator
 
 
 @dataclass
@@ -20,6 +21,8 @@ class MultiepochTrialInformation:
     prep_epoch_durations: List[int]
     diffusion_epoch_durations: List[Optional[int]]
     sample_information: SwapSampleInformation
+    pre_prep_sample_information: Optional[SwapSampleInformation] = None
+
 
 
 class MultiEpochDiffusionTask(DiffusionTask):
@@ -66,3 +69,31 @@ class MultiEpochDiffusionTask(DiffusionTask):
             diffusion_epoch_durations,
             sample_information,
         )
+
+
+class InitialisedSampleSpaceMultiEpochDiffusionTask(MultiEpochDiffusionTask):
+    """
+    Same as above except we also provide some sample space activity in the pre_prep_sample_information field
+    """
+
+    def __init__(self, task_variable_gen: InitialisedSampleSpaceTaskVariableGenerator, sensory_gen: MultiEpochSensoryGenerator, sample_gen: ExampleSampleGenerator) -> None:
+        super().__init__(task_variable_gen, sensory_gen, sample_gen)
+        self.task_variable_gen: InitialisedSampleSpaceTaskVariableGenerator # For typing later
+
+        assert sensory_gen.required_task_variable_keys.issubset(
+            task_variable_gen.pre_prep_variable_keys
+        )
+
+    def generate_trial_information(self, batch_size: int, num_samples: int, **task_variables_kwargs) -> MultiepochTrialInformation:
+        ret = super().generate_trial_information(batch_size, num_samples, **task_variables_kwargs)
+
+        import pdb; pdb.set_trace(header = 'Generate pre_prep_sample_information using relevant keys from task_variable_information')
+
+        pre_prep_sample_information = self.sample_gen.generate_sample_set(
+            num_samples, ret.task_variable_information['pre_prep_info']
+        )
+
+        ret.pre_prep_sample_information = pre_prep_sample_information
+
+        return ret
+

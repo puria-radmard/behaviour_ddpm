@@ -6,9 +6,9 @@ import numpy as np
 
 from dataclasses import dataclass
 
-from ddpm.tasks.task_variable import TaskVariableGenerator
-from ddpm.tasks.input import SensoryGenerator
-from ddpm.tasks.sample import ExampleSampleGenerator, SwapSampleInformation
+from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator
+from sampling_ddpm.ddpm.tasks.input.base import SensoryGenerator
+from sampling_ddpm.ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
 
 
 @dataclass

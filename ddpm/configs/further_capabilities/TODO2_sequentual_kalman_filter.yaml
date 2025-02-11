@@ -10,6 +10,6 @@
 # There is nothing special about denoising here: KF variance is the same for all trajectories
 
 # 20250203 XXX: update to idea - train this with a single KF-timestep at a time,
-# giving time for sample information to `soak in` from sample subspace into the nullspace
+# giving time for sample information to `absorb in` from sample subspace into the nullspace
 # Nullspace is initialised randomly, so that no information is carried from there!
 

@@ -252,7 +252,6 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
 
         return {"epsilon_hat": epsilon_hat}
 
-    @torch.no_grad()
     def generate_samples(
         self,
         *_,
@@ -525,12 +524,13 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             *batch_shape,
             self.T,
             *self.sample_shape,
-        ), f"Expected x_samples shape to end with {self.sample_shape} but got {x_samples.shape}"
+        ), f"Expected x_samples shape to end in {self.sample_shape} but got {x_samples.shape}"
 
         t_embeddings = self.time_embeddings(self.t_schedule)
-        embedded_samples = (
-            x_samples @ self.auxiliary_embedding_matrix
-        )  # [..., T, ambient space dim] --> will be used for teacher forcing
+        if self.do_teacher_forcing:
+            embedded_samples = (
+                x_samples @ self.auxiliary_embedding_matrix
+            )  # [..., T, ambient space dim] --> will be used for teacher forcing
 
         if initial_state is None:
             initial_state = (
@@ -563,7 +563,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
                 one_step_denoising = (
                     sample_removed_one_step_denoising
                     + embedded_samples[..., [-t_idx], :]
-                )  # ((one_step_denoising @ self.auxiliary_embedding_matrix.T) - x_samples[:, :, [-t_idx], ...]).abs().max() is very small
+                )
 
             # Denoise in the full ambient space for one step: one_step_denoising, early_embedded_x0_pred both of shape [..., 1, ambient space dim]
             t_embedding = t_embeddings[-t_idx][None]
@@ -599,7 +599,6 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             "subspace_trajectories": subspace_trajectories,
         }
 
-    @torch.no_grad()
     def generate_samples(
         self,
         *_,

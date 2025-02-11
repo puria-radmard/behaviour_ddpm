@@ -123,7 +123,7 @@ class IndexCuingSensoryGenerator(SensoryGenerator):
 
 class ProbeCuingSensoryGenerator(SensoryGenerator):
     """
-    Almost the full WM task now - give both dimensions, and
+    Almost the full WM task now - give both dimensions, and a probe dimension, all in cartesian space
 
     This part of the pipeline has no awareness of swap_probabilities - that needs to be tuned in sample.py
     """

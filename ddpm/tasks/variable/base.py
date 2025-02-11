@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from purias_utils.multiitem_working_memory.util.circle_utils import (
     generate_circular_feature_list,
     polar2cart,
+    rectify_angles
 )
 
 
@@ -25,13 +26,14 @@ from purias_utils.multiitem_working_memory.util.circle_utils import (
 #     }
 
 
+
 def generate_stimulus_features(N_items: int, batch_size: int) -> Dict[str, _T]:
     "all are [batch_size, num_items, 1/2]"
     all_probe_features, all_report_features = [], []
     for bs in range(batch_size):
-        all_probe_features.append(generate_circular_feature_list(N_items, torch.pi / 4))
+        all_probe_features.append(generate_circular_feature_list(N_items, torch.pi / 7.1))
         all_report_features.append(
-            generate_circular_feature_list(N_items, torch.pi / 4)
+            generate_circular_feature_list(N_items, torch.pi / 7.1)
         )
     all_probe_features = torch.tensor(all_probe_features)
     all_report_features = torch.tensor(all_report_features)
@@ -41,6 +43,34 @@ def generate_stimulus_features(N_items: int, batch_size: int) -> Dict[str, _T]:
         "probe_features_cart": torch.stack(polar2cart(1.0, all_probe_features), -1),
         "report_features_cart": torch.stack(polar2cart(1.0, all_report_features), -1),
     }
+
+
+# def generate_stimulus_features_with_gaps(N_items: int, N_gaps: int, batch_size: int) -> Dict[str, _T]:
+#     "all are [batch_size, num_items, 1/2]"
+#     all_probe_features, all_report_features = [], []
+#     for bs in range(batch_size):
+#         gap_locations = ...
+#         new_probe_features = generate_circular_feature_list(N_items, torch.pi / 4)
+#         new_probe_features_with_gaps = ...
+#         new_report_features = generate_circular_feature_list(N_items, torch.pi / 4)
+#         new_report_features_with_gaps = ...
+#         import pdb; pdb.set_trace(header = 'implement gaps with NaNs')
+#         all_probe_features.append(new_probe_features_with_gaps)
+#         all_report_features.append(new_report_features_with_gaps)
+#     all_probe_features = torch.tensor(all_probe_features)
+#     all_report_features = torch.tensor(all_report_features)
+#     all_probe_features_cart = polar2cart(1.0, all_probe_features)
+#     all_report_features_cart = polar2cart(1.0, all_report_features)
+#     all_probe_features_cart = torch.nan_to_num(all_probe_features_cart, nan = 0.0)
+#     all_report_features_cart = torch.nan_to_num(all_report_features_cart, nan = 0.0)
+#     return {
+#         "probe_features": all_probe_features,
+#         "report_features": all_report_features,
+#         "probe_features_cart": all_probe_features_cart,
+#         "report_features_cart": all_report_features_cart,
+#     }
+
+
 
 
 class TaskVariableGenerator(ABC):
@@ -74,7 +104,7 @@ class StandardCartesianWMTaskVariableGenerator(TaskVariableGenerator, ABC):
     """
 
     task_variable_keys = {
-        "probe_features",
+        #"probe_features",
         "report_features",
         "probe_features_cart",
         "report_features_cart",
@@ -233,15 +263,17 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         num_items: int,
         correct_probability: float,
         stimulus_exposure_duration: int,
+        pre_index_delay_duration: int,
         index_duration: int,
+        post_index_delay_duration: int,
     ) -> None:
         super().__init__(num_items)
         self.task_variable_keys = self.task_variable_keys.union(
-            {"cued_item_idx", "prep_epoch_durations"}
+            {"cued_item_idx", "prep_epoch_durations", "diffusion_epoch_durations"}
         )
-        assert 0.0 < correct_probability < 1.0
+        assert 0.0 <= correct_probability <= 1.0
         self.correct_probability = correct_probability
-        self.prep_epoch_durations = [stimulus_exposure_duration, index_duration]
+        self.prep_epoch_durations = [stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration]
         self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
@@ -262,6 +294,65 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         probability_vector[~selected_item_mask] = (1.0 - self.correct_probability) / (
             self.num_items - 1
         )
+        # assert set(probability_vector.sum(-1).unique().tolist()) == {1.0}
+        return {
+            "swap_probabilities": probability_vector,
+            "cued_item_idx": selected_item,
+            "prep_epoch_durations": self.prep_epoch_durations,
+            "diffusion_epoch_durations": self.diffusion_epoch_durations
+        }
+
+
+class ProbeDistanceProbabilityTaskVariableGenerator(
+    ZeroTemperatureSwapProbabilityTaskVariableGenerator
+):
+    """
+    Next, we have a swap function that depends on the angular distance in the *probe* dimension only
+
+    f(x = delta probe) = -0.5x^2/(0.5 swap_function_width + eps)
+    The probability of swapping is softmax(f(x))
+        NB: x in radians!
+
+    Setting swap_function_width = 0 gives the same as SpikeAndSlabSwapProbabilityTaskVariableGenerator
+    """
+    def __init__(
+        self,
+        num_items: int,
+        swap_function_width: float,
+        stimulus_exposure_duration: int,
+        pre_index_delay_duration: int,
+        index_duration: int,
+        post_index_delay_duration: int,
+    ) -> None:
+        super().__init__(num_items)
+        self.task_variable_keys = self.task_variable_keys.union(
+            {"cued_item_idx", "prep_epoch_durations", "diffusion_epoch_durations"}
+        )
+        self.swap_function_width = swap_function_width
+        self.prep_epoch_durations = [stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration]
+        self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
+
+    
+    def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
+        """
+        selected_item of shape [batch]
+        probability_vector of shape [batch, num_items]
+        """
+        batch_size = variable_dict["report_features"].shape[0]
+        assert tuple(variable_dict["report_features"].shape) == (
+            batch_size,
+            self.num_items,
+        )
+        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        selected_item_mask = torch.zeros(batch_size, self.num_items).bool()
+        selected_item_mask[range(batch_size), selected_item] = True
+
+
+        cued_probe = variable_dict["probe_features"][range(batch_size), selected_item].unsqueeze(-1)
+        cued_probe_sq_distance = rectify_angles(variable_dict["probe_features"] - cued_probe).square()
+        swap_func = -0.5 * (cued_probe_sq_distance / (self.swap_function_width + 2e-5))
+        probability_vector = swap_func.softmax(-1)
+
         # assert set(probability_vector.sum(-1).unique().tolist()) == {1.0}
         return {
             "swap_probabilities": probability_vector,

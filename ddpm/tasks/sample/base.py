@@ -41,7 +41,6 @@ class ExampleSampleGenerator(ABC):
 
     sample_shape: List[int]
     required_task_variable_keys: Set[str]
-    diagnostics_memory = 100
 
     task_metadata = {}
 
