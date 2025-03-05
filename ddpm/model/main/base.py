@@ -12,6 +12,8 @@ from ddpm.model.time_repr import TimeEmbeddingBlock
 from ddpm.model.residual import VectoralResidualModel, UNetResidualModel
 from ddpm.model.input import InputModelBlock
 
+from ddpm.tasks.distribution import DistributionInformation
+
 
 class DDPMReverseProcessBase(nn.Module, ABC):
     """
@@ -27,10 +29,9 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         residual_model: VectoralResidualModel | UNetResidualModel,
         input_model: InputModelBlock,
         time_embedding_size: int,
-        target_variance: float,
         device="cuda",
     ) -> None:
-        super().__init__()
+        super(DDPMReverseProcessBase, self).__init__()
 
         self.sample_shape = sample_shape
 
@@ -46,7 +47,6 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         ), f"Got an input model (sensory -> residual network) with output size {input_model.network_input_size}, but a residual model that accepts inputs of size {residual_model.input_size}"
 
         # Incremental noising
-        self.target_variance = target_variance
         self.sigma2xt_schedule = sigma2xt_schedule  # t = 1, ..., T
         assert len(sigma2xt_schedule.shape) == 1
         self.t_schedule = torch.arange(self.T)  # Indexes self.time_embeddings.time_embs
@@ -97,14 +97,19 @@ class DDPMReverseProcessBase(nn.Module, ABC):
             :, *[None for _ in self.sample_shape]
         ]  # [T, <1 for each of shape x>]
 
+        self.device = device
+        self.to(device)
+
     def to(self, *args, **kwargs):
         self.sigma2xt_schedule = self.sigma2xt_schedule.to(*args, **kwargs)
-        self.t_schedule = self.t_schedule.to(*args, **kwargs)
+        self.t_schedule = self.t_schedule.to(*args, **kwargs).int()
         self.incremental_modulation_schedule = self.incremental_modulation_schedule.to(
             *args, **kwargs
         )
         self.a_t_schedule = self.a_t_schedule.to(*args, **kwargs)
+        self.reshaped_a_t_schedule = self.reshaped_a_t_schedule.to(*args, **kwargs)
         self.root_b_t_schedule = self.root_b_t_schedule.to(*args, **kwargs)
+        self.reshaped_root_b_t_schedule = self.reshaped_root_b_t_schedule.to(*args, **kwargs)
         # self.mse_scaler_schedule = self.mse_scaler_schedule.to(*args, **kwargs)
         self.noise_scaler_schedule = self.noise_scaler_schedule.to(*args, **kwargs)
         return super(DDPMReverseProcessBase, self).to(*args, **kwargs)
@@ -292,7 +297,7 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
             *samples_shape,
             self.T,
             self.residual_model.input_size,
-        ), f"Expected input_vector shape to be just {(self.T, *self.residual_model.input_size)} but got {tuple(input_vectors.shape)}"
+        ), f"Expected input_vector shape to end with {(self.T, self.residual_model.input_size)} but got {tuple(input_vectors.shape)}"
 
         base_samples = base_samples.unsqueeze(len(samples_shape))  # [..., 1, D]
         t_embeddings = self.time_embeddings(self.t_schedule)
@@ -601,6 +606,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
 
     def generate_samples(
         self,
+        # target_distribution: DistributionInformation,   # For debugging only!
         *_,
         network_input: _T,
         samples_shape: Optional[List[int]] = None,
@@ -664,16 +670,25 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
         for t_idx in range(start_t_idx, end_t_idx + 1):
 
             t_embedding = t_embeddings[-t_idx][None]
-
+            
             predicted_residual = self.residual_model(
                 base_samples, t_embedding, input_vectors[..., [-t_idx], :]
             )
 
-            #### XXX CHECK IF DYNAMICS ACTUALLY WORK
-            # true_x0 = input_vector[...,:2].float()
-            # actual_residual = ((base_samples @ self.auxiliary_embedding_matrix.T) - (self.a_t_schedule[-t_idx] * true_x0)) / self.root_b_t_schedule[-t_idx]
-            # predicted_residual = predicted_residual - (predicted_residual @ self.sample_subspace_accessor) + (actual_residual @ self.auxiliary_embedding_matrix)
-            ####
+            # XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ###
+            # print("replacing with true score - shouldn't even be accessible here")
+            # subspace_activity = base_samples @ self.auxiliary_embedding_matrix.T
+
+            # true_score = target_distribution.calculate_score(
+            #     subspace_activity, self.a_t_schedule[[-t_idx]], self.root_b_t_schedule[[-t_idx]].square()
+            # ).detach()[[0]]
+
+            # predicted_residual = predicted_residual - (
+            #     predicted_residual @ self.sample_subspace_accessor
+            # ) + (
+            #     true_score @ self.auxiliary_embedding_matrix
+            # )
+            # XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ###
 
             base_samples, early_embedded_x0_pred = self.denoise_one_step(
                 t_idx, base_samples, predicted_residual, noise_scaler
@@ -879,6 +894,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
                     1,
                     self.sample_ambient_dim,
                     device=self.sigma2xt_schedule.device,
+                    dtype=self.sigma2xt_schedule.dtype,
                 )
                 * self.base_std
             )  # [..., 1, D]

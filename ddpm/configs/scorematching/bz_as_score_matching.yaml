@@ -1,0 +1,61 @@
+# 20250210
+# further_capabilities/b...yaml was fine, but b2 and b3 turned out to be very difficult, or at least very inefficient
+
+# to try to remedy this, we try the new class of models which learn the score of the 
+
+# 20250203
+# Basic version of Mallett 2022 task with no swapping, just diffusion to a correct answer
+# Items are fed in as an *ordered* set of colours and locations
+  # These are coordinates on the unit circle
+  # A location may be unoccupied, in which case this is just zero in the Cartesian space
+# Probes are fed in as the location
+
+# TODO: later, test this model by probing an unoccupied item!
+
+# python -m ddpm.train_multiepoch ddpm/configs/further_capabilities/b_probe_cued_with_probe_no_swap.yaml
+
+
+# Model
+model_name: score_matching_teacher_forced_delayed_probe_cue
+model_config:
+  recurrence_hidden_layers: [128]
+  time_embedding_size: 16
+  sample_ambient_dim: 128
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+
+
+regularise_prep_state: true
+regularise_prep_state_weight_mean: 0.1
+regularise_prep_state_weight_std: 0.01
+
+# Diffusion
+ultimate_sigma2: 0.1
+starting_sigma2: 0.1
+num_timesteps: 40
+
+# Training/logging
+logging_freq: 100
+batch_size: 32
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_score_matching_20250225/run_bz_as_score_matching"
+
+
+# Task
+task_name: score_matching_delayed_probe_cue_vectoral_with_swap_function
+task_config:
+
+  num_items: 6
+  swap_function_width: 0.0                      # No swapping at all!
+  sample_radius: 2.5
+  
+  # Like Mallett 2022, dt = 0.15
+  stimulus_exposure_duration: 10  # Increased from 5 to help encoding
+  pre_index_delay_duration: 28
+  index_duration: 5
+  post_index_delay_duration: 40   # Decreased from 80 to help with memory

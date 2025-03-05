@@ -1,4 +1,4 @@
-from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator, generate_stimulus_features
+from ddpm.tasks.variable.base import TaskVariableGenerator, generate_stimulus_features
 
 from typing import Dict, Set, Tuple
 

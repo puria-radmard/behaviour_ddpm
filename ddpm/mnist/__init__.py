@@ -3,7 +3,7 @@ from typing import List
 
 from torch import Tensor as _T
 
-from sampling_ddpm.ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
+from ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
 from ddpm.mnist.task import (
     MNISTClassExampleSampleGenerator,
     TimestepCounterTaskVariableGenerator,
@@ -13,10 +13,10 @@ from ddpm.mnist.task import (
     ClassificationSensoryGenerator,
 )
 
-from sampling_ddpm.ddpm.model.main.base import *
+from ddpm.model.main.base import *
 from ddpm.model.residual import VectoralResidualModel
 from ddpm.model.input import InputModelBlock, AllowIndexInputModelBlock
-from sampling_ddpm.ddpm.model.main.multiepoch import (
+from ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
 

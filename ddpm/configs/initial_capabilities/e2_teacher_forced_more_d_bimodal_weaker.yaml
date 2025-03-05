@@ -13,7 +13,7 @@ model_config:
     seperate_output_neurons: false
 
 
-resume_path: /homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_e2_teacher_forced_more_d_bimodal_weaker_0/state.mdl
+resume_path: /homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_recoup_20250108/run_e2_teacher_forced_more_d_bimodal_weaker_0/state.mdl
 
 regularise_prep_state: true
 regularise_prep_state_weight: 0.1
@@ -31,7 +31,7 @@ batch_size: 64
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_e2_teacher_forced_more_d_bimodal_weaker"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_recoup_20250108/run_e2_teacher_forced_more_d_bimodal_weaker"
 
 
 # Task

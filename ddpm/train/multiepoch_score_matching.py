@@ -12,12 +12,12 @@ from collections import deque
 
 from purias_utils.util.arguments_yaml import ConfigNamepace
 
-from sampling_ddpm.ddpm.model.main.multiepoch import (
-    MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+from ddpm.model.main.scorematching import (
+    ScoreMatchingMultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
 from ddpm.utils.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
-from sampling_ddpm.ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
+from ddpm.tasks.main.multiepoch_scorematching import ScoreMatchingMultiEpochDiffusionTask
 
 
 import matplotlib.cm as cmx
@@ -52,7 +52,8 @@ logging_freq = args.logging_freq
 save_base = args.save_base
 task_name = args.task_name
 task_config = args.task_config
-regularise_prep_state_weight = args.regularise_prep_state_weight
+regularise_prep_state_weight_mean = args.regularise_prep_state_weight_mean
+regularise_prep_state_weight_std = args.regularise_prep_state_weight_std
 model_name = args.model_name
 model_config = args.model_config
 lr = args.lr
@@ -69,7 +70,8 @@ timer = LoopTimer(num_trials)
     save_base, log_suffixes=[f"train"], index_new=True
 )
 all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
-all_prep_state_losses = np.zeros([num_trials])
+all_prep_state_mean_losses = np.zeros([num_trials])
+all_prep_state_std_losses = np.zeros([num_trials])
 args.write_to_yaml(os.path.join(save_base, "args.yaml"))
 
 
@@ -80,7 +82,7 @@ sigma2x_schedule = torch.linspace(starting_sigma2, ultimate_sigma2, num_timestep
 sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 
-task: MultiEpochDiffusionTask = getattr(tasks, task_name)(**task_config.dict)
+task: ScoreMatchingMultiEpochDiffusionTask = getattr(tasks, task_name)(**task_config.dict)
 task.save_metadata(os.path.join(save_base, "task_metadata"))
 
 
@@ -94,14 +96,17 @@ ddpm_model, mse_key = getattr(model, model_name)(
     sigma2x_schedule=sigma2x_schedule,
     prep_sensory_shape=task.sensory_gen.prep_sensory_shape,
     underlying_sensory_shape=task.sensory_gen.underlying_sensory_shape,
-    sample_shape=task.sample_gen.sample_shape,
+    sample_shape=task.distribution_gen.sample_shape,
     device=device,
 )
+#ddpm_model.do_teacher_forcing = False
+#print('ddpm_model.do_teacher_forcing = False !!!!')
 
-ddpm_model: MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
-ddpm_model.to(device)
+ddpm_model: ScoreMatchingMultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
+ddpm_model.to(device=device, dtype=torch.float32)
+ddpm_model.time_embeddings.to(device=device, dtype=torch.float32)
 mse_key: str
-assert mse_key == "epsilon_hat"
+assert mse_key == "score_hat"
 
 if resume_path is not None:
     ddpm_model.load_state_dict(torch.load(resume_path))
@@ -119,21 +124,6 @@ sch_axes[0].plot(
 sch_axes[0].plot(ddpm_model.a_t_schedule.cpu().numpy(), label="a_t_schedule", alpha=0.4)
 sch_axes[0].plot(
     ddpm_model.root_b_t_schedule.cpu().numpy(), label="root_b_t_schedule", alpha=0.4
-)
-sch_axes[0].plot(
-    ddpm_model.noise_scaler_schedule.cpu().numpy(),
-    label="noise_scaler_schedule",
-    alpha=0.4,
-)
-sch_axes[0].plot(
-    ddpm_model.base_samples_scaler_schedule.cpu().numpy(),
-    label="base_samples_scaler_schedule",
-    alpha=0.4,
-)
-sch_axes[0].plot(
-    ddpm_model.residual_scaler_schedule.cpu().numpy(),
-    label="residual_scaler_schedule",
-    alpha=0.4,
 )
 sch_axes[0].legend()
 
@@ -158,31 +148,39 @@ for t in tqdm(range(num_trials)):
         batch_size=batch_size, num_samples=num_samples
     )
 
-    forward_process = ddpm_model.noise(
-        x_0=trial_information.sample_information.sample_set.to(device).float()
-    )
-    preparatory_state_dicts, epsilon_hat_dict = ddpm_model.residual(
-        x_samples=forward_process["x_t"],
+    preparatory_state_dicts, epsilon_hat_dict = ddpm_model.est_score(
+        target_distribution=trial_information.distribution_information,
         prep_network_inputs=trial_information.prep_network_inputs,
         diffusion_network_inputs=trial_information.diffusion_network_inputs,
         prep_epoch_durations=trial_information.prep_epoch_durations,
         diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
     )
-    residual_mse = task.sample_gen.mse(
-        epsilon_hat_dict[mse_key], forward_process["epsilon"]
+
+    true_score = trial_information.distribution_information.calculate_score(
+        x_t = epsilon_hat_dict['subspace_trajectories'].flip(-2), # Reverse order!
+        a_t = ddpm_model.a_t_schedule,
+        b_t = ddpm_model.root_b_t_schedule.square(),
+    )
+
+    residual_mse = task.distribution_gen.score_mse(
+        epsilon_hat_dict[mse_key],
+        true_score
     )  # [batch, samples, time]
 
     total_loss = residual_mse.mean()
 
-    prep_state_loss = (
+    prep_state_loss_mean = (
         preparatory_state_dicts[-1]["postprep_base_samples"]
-        .mean(-2)
-        .square()
-        .sum(-1)
-        .sqrt()
-        .mean(0)
+        .mean(-2).square().sum(-1).sqrt().mean(0)
     )  # [B,S,2] -> mean over samples [B,2] -> mag of mean [B] -> average of that <scalar>
-    total_loss = total_loss + (regularise_prep_state_weight * prep_state_loss)
+
+    prep_state_loss_std = (
+        (preparatory_state_dicts[-1]["postprep_base_samples"].std(-2) - 1)
+        .square().sum(-1).sqrt().mean(0)
+    )
+
+    total_loss = total_loss + (regularise_prep_state_weight_mean * prep_state_loss_mean)
+    total_loss = total_loss + (regularise_prep_state_weight_std * prep_state_loss_std)
 
     optim.zero_grad()
     total_loss.backward()
@@ -192,7 +190,8 @@ for t in tqdm(range(num_trials)):
         all_individual_residual_mses[t - plotting_start, :] = (
             residual_mse.detach().cpu().mean(0).mean(0)
         )
-        all_prep_state_losses[t - plotting_start] = prep_state_loss.detach().cpu()
+        all_prep_state_mean_losses[t - plotting_start] = prep_state_loss_mean.detach().cpu()
+        all_prep_state_std_losses[t - plotting_start] = prep_state_loss_std.detach().cpu()
 
     if (t - plotting_offset) % logging_freq == 0:
 
@@ -207,37 +206,33 @@ for t in tqdm(range(num_trials)):
                 prep_epoch_durations=trial_information.prep_epoch_durations,
                 diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
                 samples_shape=[1, num_samples],
-                noise_scaler=1.0,
+                noise_scaler=1.0
             )
 
         fig, axes = plt.subplots(2, 5, figsize=(25, 10))
 
-        axes[0, 0].set_title("Real sample(s)")
-        axes[0, 1].set_title("Generated sample(s)")
-        axes[0, 2].set_title("Early predictions of $x_0$")
+        axes[0, 0].set_title("Real score")
+        axes[0, 1].set_title("Generated sample(s) - no teacher forcing")
+        axes[0, 2].set_title("Generated sample(s) - full teacher forcing")
         axes[0, 3].set_title(
-            "Samples from base distribution vs actual pre-diffusion behaviour states"
+            "Samples from pre-diffusion (preparatory) behaviour states"
         )
-        axes[0, 4].set_title("$\hat\epsilon$ during generation")
+        axes[0, 4].set_title("$\hat s$ during generation")
 
-        task.sample_gen.display_samples(
-            trial_information.sample_information, axes[0, 0]
-        )
-        task.sample_gen.display_samples(novel_samples_dict["samples"], axes[0, 1])
-        task.sample_gen.display_early_x0_pred_timeseries(
-            novel_samples_dict["early_x0_preds"], axes[0, 2], kl_colors_scalarMap
-        )
-        task.sample_gen.display_samples(
+        trial_information.distribution_information.display_final_score(axes = axes[0, 0])
+        task.distribution_gen.display_samples(novel_samples_dict["samples"], axes[0, 1])
+        task.distribution_gen.display_samples(epsilon_hat_dict["subspace_trajectories"][...,-1,:].detach(), axes[0, 2])
+        trial_information.distribution_information.display_final_score(axes = axes[0, 1], plotting_kwargs={'alpha': 0.2}, use_axes_lims = True)
+        trial_information.distribution_information.display_final_score(axes = axes[0, 2], plotting_kwargs={'alpha': 0.2}, use_axes_lims = True)
+        task.distribution_gen.display_samples(
             novel_samples_prep_dicts[-1]["postprep_base_samples"].detach().cpu(),
             axes[0, 3],
         )
-        task.sample_gen.display_samples(
-            forward_process["x_t"][:, :, -1, ...], axes[0, 3]
-        )
-        task.sample_gen.display_early_x0_pred_timeseries(
-            novel_samples_dict["epsilon_hat"].detach().cpu(),
+
+        task.distribution_gen.display_sample_timeseries(
+            epsilon_hat_dict["score_hat"].detach().cpu(),
             axes[0, 4],
-            kl_colors_scalarMap,
+            cmap = kl_colors_scalarMap,
         )
 
         task.task_variable_gen.display_task_variables(
@@ -250,18 +245,20 @@ for t in tqdm(range(num_trials)):
         symmetrize_and_square_axis(axes[0, 3])
         symmetrize_and_square_axis(axes[0, 4])
 
-        axes[1, 2].set_title("Individual timesteps MSE")
+        axes[1, 2].set_title("Individual timesteps score MSE")
         # axes[1,1].set_title('Individual timesteps MSE (zoomed in)')
-        axes[1, 3].set_title("MSE averaged over timesteps")
+        axes[1, 3].set_title("Score MSE averaged over timesteps (zoomed in)")
         if t > plotting_start:
+            end = t + 1 - plotting_start
             for h, trace in enumerate(
-                all_individual_residual_mses[: t + 1 - plotting_start].T
+                all_individual_residual_mses[: end].T
             ):
                 color = kl_colors_scalarMap.to_rgba(h + 1)
                 axes[1, 2].plot(trace, color=color)
                 # axes[1,1].plot(trace[-int(2 * (t+1-plotting_start) / 3):], color = color)
+            start = int(end / 3)
             axes[1, 3].plot(
-                all_individual_residual_mses[: t + 1 - plotting_start].mean(-1)
+                all_individual_residual_mses[start : end].mean(-1)
             )
         cax = inset_axes(axes[1, 0], width="30%", height=1.0, loc=3)
         plt.colorbar(
@@ -273,7 +270,9 @@ for t in tqdm(range(num_trials)):
 
         axes[1, 4].set_title("Prep state behaviour activity regulariser")
         if t > plotting_start:
-            axes[1, 4].plot(all_prep_state_losses[: t + 1 - plotting_start])
+            axes[1, 4].plot(all_prep_state_mean_losses[: t + 1 - plotting_start], label = 'mean')
+            axes[1, 4].plot(all_prep_state_std_losses[: t + 1 - plotting_start], label = 'std')
+        axes[1, 4].legend()
 
         plt.savefig(os.path.join(save_base, "latest_log.png"))
         plt.close("all")

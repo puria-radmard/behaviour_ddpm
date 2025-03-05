@@ -6,11 +6,11 @@ import numpy as np
 
 from dataclasses import dataclass
 
-from sampling_ddpm.ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
-from sampling_ddpm.ddpm.tasks.main.base import DiffusionTask
-from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator
+from ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
+from ddpm.tasks.main.base import DiffusionTask
+from ddpm.tasks.variable.base import TaskVariableGenerator
 from ddpm.tasks.distribution import DistributionInformation, DistributionInformationGenerator
-from sampling_ddpm.ddpm.tasks.input.multiepoch import MultiEpochSensoryGenerator
+from ddpm.tasks.input.multiepoch import MultiEpochSensoryGenerator
 
 
 @dataclass
@@ -20,7 +20,7 @@ class ScoreMatchingMultiepochTrialInformation:
     diffusion_network_inputs: List[_T]
     prep_epoch_durations: List[int]
     diffusion_epoch_durations: List[Optional[int]]
-    sample_information: DistributionInformation
+    distribution_information: DistributionInformation
 
 
 
@@ -70,7 +70,7 @@ class ScoreMatchingMultiEpochDiffusionTask(DiffusionTask):
             for dni in diffusion_network_inputs
         ]
         distribution_information = self.distribution_gen.generate_distribution_information(
-            num_samples, task_variable_information
+            task_variable_information
         )
         prep_epoch_durations = task_variable_information["prep_epoch_durations"]
         diffusion_epoch_durations = task_variable_information["diffusion_epoch_durations"]
@@ -80,5 +80,5 @@ class ScoreMatchingMultiEpochDiffusionTask(DiffusionTask):
             diffusion_network_inputs,
             prep_epoch_durations,
             diffusion_epoch_durations,
-            sample_information,
+            distribution_information,
         )

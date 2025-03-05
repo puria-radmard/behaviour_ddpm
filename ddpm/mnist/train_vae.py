@@ -27,8 +27,8 @@ COVAR_SCALER = 0.6
 z_dim = int(sys.argv[1])
 num_classes = 10
 
-mnist_path = "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/data/mnist"
-logging_directory = f"/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/mnist/vae/z{z_dim}_run"
+mnist_path = "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/data/mnist"
+logging_directory = f"/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/mnist/vae/z{z_dim}_run"
 
 transform = transforms.Compose([transforms.ToTensor()])
 

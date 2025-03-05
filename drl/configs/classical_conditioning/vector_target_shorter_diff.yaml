@@ -1,0 +1,40 @@
+
+# One trial in a batch is just characterised by the reward
+num_batches: 1000000
+batch_size: 2048
+task_time_embedding_size: 16       # timesteps since CS+ represented like this
+wait_time: 2
+time_between_cs_and_us: 5    # Fixed for now!
+time_after_us: 2
+show_freq: 1
+
+# RL parameters
+start_freezing_batch: inf # 3000
+freezing_frequency: 300
+gamma: 0.9
+opt_steps_per_batch: 1
+
+
+# Reward distribution
+all_reward_distributions:
+  - reward_distribution_name: Gamma
+    reward_distribution_kwargs:
+      concentration: 5.0
+      rate: 0.4
+    reward_distribution_min: 0
+    reward_distribution_max: 50
+  - reward_distribution_name: GaussianMixture
+    reward_distribution_kwargs:
+      weights: [0.5, 0.5]
+      means: [-20.0, 20.0]
+      stds: [5.0, 5.0]
+    reward_distribution_min: -50
+    reward_distribution_max: 50
+
+
+# Diffusion
+starting_sigma2: 0.3
+ultimate_sigma2: 0.3
+num_diffusion_timesteps: 20
+
+save_base: /homes/pr450/repos/research_projects/sampling_ddpm/results_link_drl/classical_conditioning/test/run

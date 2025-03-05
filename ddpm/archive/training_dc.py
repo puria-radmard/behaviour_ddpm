@@ -4,17 +4,17 @@ import numpy as np
 from tqdm import tqdm
 
 try:
-    from sampling_ddpm.ddpm.model import *
-    from sampling_ddpm.ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
-    from sampling_ddpm.ddpm.utils.plotting import symmetrize_and_square_axis
-    from sampling_ddpm.ddpm.contextual_ddpm_tasks import (
+    from ddpm.model import *
+    from ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
+    from ddpm.utils.plotting import symmetrize_and_square_axis
+    from ddpm.contextual_ddpm_tasks import (
         generate_clifford_torus_directions,
         embed_2D_items_in_clifford,
     )
 except ImportError:
     from ddpm.model import *
     from ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
-    from sampling_ddpm.ddpm.utils.plotting import symmetrize_and_square_axis
+    from ddpm.utils.plotting import symmetrize_and_square_axis
     from ddpm.contextual_ddpm_tasks import (
         generate_clifford_torus_directions,
         embed_2D_items_in_clifford,
@@ -60,7 +60,7 @@ selected_timesteps = [0, 19, 39, 59, 79, 99]
 num_noised_example_marginals = 5
 
 
-save_base = "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_dc_residual_21_12_24/run"
+save_base = "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_dc_residual_21_12_24/run"
 [training_print_path], save_base, _ = configure_logging_paths(
     save_base, log_suffixes=[f"train"], index_new=True
 )

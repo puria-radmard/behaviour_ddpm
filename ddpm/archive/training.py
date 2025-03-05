@@ -6,13 +6,13 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from sampling_ddpm.ddpm.utils.plotting import symmetrize_and_square_axis
-from sampling_ddpm.ddpm.model import (
+from ddpm.utils.plotting import symmetrize_and_square_axis
+from ddpm.model import (
     VectoralResidualModel,
     DDPMReverseProcess,
     InputModelBlock,
 )
-from sampling_ddpm.ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
+from ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
 
 from purias_utils.util.logging import configure_logging_paths
 from purias_utils.util.logging import LoopTimer
@@ -40,7 +40,7 @@ num_timesteps = 100
 noise_schedule_power = 4.0
 
 
-save_base = "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_residual_15_12_24/run"
+save_base = "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_residual_15_12_24/run"
 [training_print_path], save_base, _ = configure_logging_paths(
     save_base, log_suffixes=[f"train"], index_new=True
 )
@@ -75,7 +75,7 @@ ddpm_model = DDPMReverseProcess(
 ).to("cuda")
 
 # ddpm_model.load_state_dict(
-#     torch.load('/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_residual_15_12_24/run_8/state_T100.mdl')
+#     torch.load('/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_residual_15_12_24/run_8/state_T100.mdl')
 # )
 
 

@@ -29,7 +29,7 @@ batch_size: 64
 num_samples: 512
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_teacher_forcing_20241228/run_multimodal_teacher_forcining_even_overpowered"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_teacher_forcing_20241228/run_multimodal_teacher_forcining_even_overpowered"
 
 
 # Task

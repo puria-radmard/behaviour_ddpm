@@ -12,12 +12,12 @@ from collections import deque
 
 from purias_utils.util.arguments_yaml import ConfigNamepace
 
-from sampling_ddpm.ddpm.model.main.multiepoch import (
+from ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
 from ddpm.utils.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
-from sampling_ddpm.ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
+from ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
 
 
 import matplotlib.cm as cmx
@@ -105,6 +105,7 @@ assert mse_key == "epsilon_hat"
 
 if resume_path is not None:
     ddpm_model.load_state_dict(torch.load(resume_path))
+    task.load_metadata(resume_path.replace('state.mdl', 'task_metadata.npy'))
 
 
 # Set up training

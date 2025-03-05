@@ -22,7 +22,7 @@ task_variable_gen_kwargs:
   buzzer_dur: 3
   class_dur: 5
 
-vae_base_path: /homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/mnist/vae/z5_run_0
+vae_base_path: /homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/mnist/vae/z5_run_0
 z_dim: 5
 
 
@@ -36,4 +36,4 @@ logging_freq: 100
 num_samples: 2048
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_mnist_20250114/run_b_counter"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_mnist_20250114/run_b_counter"

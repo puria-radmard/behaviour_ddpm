@@ -38,14 +38,45 @@ class TimeEmbeddingBlock(nn.Module):
         )
         self.T = total_time
 
+        self.time_embedding_dim = time_embedding_dim
+
+        self.device = device
+        self.to(device)
+
     def to(self, *args, **kwargs):
         self.time_embs = self.time_embs.to(*args, **kwargs)
         return super(TimeEmbeddingBlock, self).to(*args, **kwargs)
 
-    def forward(self, time: _T):
+    def forward(self, time: _T, *args):
         """
-        TODO: docstring
+        Input: [...]
+        Output: [..., time embedding dim]
         """
-        assert (time >= 0).all() and (time <= self.T).all()
+        assert (time >= 0).all() and (time < self.T).all()
         embs = self.time_embs[time]  # [T selected, emb dim]
         return self.layers(embs)
+
+
+
+class TimeEmbeddingBlockWithEmbeddings(TimeEmbeddingBlock):
+    """
+    Positive indices call TimeEmbeddingBlock
+    Negative indices index an embedding block
+    """
+
+    def __init__(self, total_time: int, time_embedding_dim: int, num_extra_embeddings: int, device="cuda"):
+        super().__init__(total_time, time_embedding_dim, device)
+        
+        self.num_extra_embeddings = num_extra_embeddings
+        self.neg_embeddings = nn.Embedding(num_extra_embeddings, time_embedding_dim)
+
+    def forward(self, time: _T, *args):
+        canvas = torch.zeros_like(time).unsqueeze(-1).to()
+        canvas = canvas.repeat_interleave(self.time_embedding_dim, -1)
+        positive_time = time[time >= 0]
+        smooth_res = super(TimeEmbeddingBlockWithEmbeddings, self).forward(positive_time, *args)
+        canvas = canvas.to(smooth_res.dtype)
+        canvas[time >= 0] = smooth_res
+        canvas[time < 0] = self.neg_embeddings(- time[time < 0] - 1)
+        return canvas
+

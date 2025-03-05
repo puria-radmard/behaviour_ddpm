@@ -1,0 +1,43 @@
+# 20200205 - same as super basic configs/initial_capabilities/h_teacher_forced_causal_inference.yaml
+# ... just doing it with score matching instead!
+# No memory - just the network...
+
+
+# This is not multiepoch prep - this is 
+model_name: score_matching_teacher_forced_vectoral
+model_config:
+  recurrence_hidden_layers: [128]  # weaken model by a lot so that it has to use its nullspace activity
+  time_embedding_size: 16
+  sample_ambient_dim: 128             
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+
+
+#regularise_prep_state: true
+#regularise_prep_state_weight: 0.1
+
+
+# Diffusion -- reduced from before!
+ultimate_sigma2: 0.10
+starting_sigma2: 0.10
+num_timesteps: 60
+
+
+# Training/logging
+logging_freq: 100
+batch_size: 64
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_score_matching_20250225/run_a_sm_causal_inference"
+
+
+# Task
+task_name: score_matching_vectoral_even_causal_inference
+task_config:
+  # sample_size: 2 # no other way at the moment!
+  min_margin_div_pi: 0.66667
+  sample_radius: 2.5

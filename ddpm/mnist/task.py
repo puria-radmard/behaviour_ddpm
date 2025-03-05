@@ -9,9 +9,9 @@ from typing import Dict, Tuple, Deque, Optional, Union, List
 
 from matplotlib.pyplot import Axes
 
-from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator
-from sampling_ddpm.ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
-from sampling_ddpm.ddpm.tasks.input.multiepoch import MultiEpochSensoryGenerator
+from ddpm.tasks.variable.base import TaskVariableGenerator
+from ddpm.tasks.sample.base import ExampleSampleGenerator, SwapSampleInformation
+from ddpm.tasks.input.multiepoch import MultiEpochSensoryGenerator
 
 from ddpm.mnist.vae import MNISTVAE
 

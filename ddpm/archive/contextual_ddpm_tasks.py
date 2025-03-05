@@ -11,7 +11,7 @@ from purias_utils.multiitem_working_memory.util.circle_utils import (
 )
 
 try:
-    from sampling_ddpm.ddpm.model import DoublyConditionedDDPMReverseProcess
+    from ddpm.model import DoublyConditionedDDPMReverseProcess
 except ImportError:
     from ddpm.model import DoublyConditionedDDPMReverseProcess
 

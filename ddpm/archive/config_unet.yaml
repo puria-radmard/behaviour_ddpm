@@ -16,7 +16,7 @@ logging_freq: 200
 batch_size: 32
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_unified_20241224_unet/run"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_unified_20241224_unet/run"
 
 
 # Task

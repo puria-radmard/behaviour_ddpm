@@ -19,7 +19,7 @@ from purias_utils.util.logging import LoopTimer
 
 from matplotlib import pyplot as plt
 
-from sampling_ddpm.ddpm.model.main.multiepoch import (
+from ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
 

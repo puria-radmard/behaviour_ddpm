@@ -37,7 +37,7 @@ batch_size: 32
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_further_20250120/run_b2_probe_cued_with_probe_flat_swap"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b2_probe_cued_with_probe_flat_swap"
 
 
 # Task

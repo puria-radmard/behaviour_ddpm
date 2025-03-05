@@ -7,10 +7,7 @@ from collections import deque
 
 from purias_utils.util.arguments_yaml import ConfigNamepace
 
-from ddpm.model import (
-    DDPMReverseProcessBase,
-    LinearSubspaceTeacherForcedDDPMReverseProcess,
-)
+from ddpm.model.main.base import DDPMReverseProcessBase, LinearSubspaceTeacherForcedDDPMReverseProcess
 from ddpm.utils.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
 

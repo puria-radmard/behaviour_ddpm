@@ -6,7 +6,7 @@ from torch import Tensor as _T
 from ddpm.model.residual import VectoralResidualModel
 from ddpm.model.input import InputModelBlock
 
-from sampling_ddpm.ddpm.model.main.base import PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
+from ddpm.model.main.base import PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
 
 
 class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(

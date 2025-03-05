@@ -26,7 +26,7 @@ batch_size: 64
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/error_modelling_torus/results_link_sampler/ddpm_recoup_20250108/run_d_teacher_forced_more_d_unimodal"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_recoup_20250108/run_d_teacher_forced_more_d_unimodal"
 
 
 # Task

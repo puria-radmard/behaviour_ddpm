@@ -47,8 +47,9 @@ for t, eps in enumerate(epsilon_actual):  # Forward time
 distn = DiagonalGaussianMixtureDistributionInformation(
     weights = comp_weights[None,None], 
     means = initial_means[None,None], 
-    vars = initial_std2[None,None],
-    sample_size = 2
+    std2s = initial_std2[None,None],
+    sample_size = 2,
+    device = 'cpu'
 )
 
 

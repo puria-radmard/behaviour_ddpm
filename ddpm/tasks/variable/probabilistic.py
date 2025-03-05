@@ -2,7 +2,7 @@
 # Made for probabilstic tasks - multisensory integration, causal inference, etc.
 # n.b. all tasks are stochastic due to diffusion, this is specifically for tasks that deal with probabilistic quantities
 
-from sampling_ddpm.ddpm.tasks.variable.base import TaskVariableGenerator, generate_stimulus_features
+from ddpm.tasks.variable.base import TaskVariableGenerator, generate_stimulus_features
 from typing import Dict
 
 import torch
