@@ -6,7 +6,7 @@ from drl.rl_envs import cc_reward_distributions
 
 from ddpm.model.main.base import OneShotDDPMReverseProcess
 from ddpm.model.residual import VectoralResidualModel
-from ddpm.model.time_repr import TimeEmbeddingBlockWithEmbeddings
+from ddpm.model.embedding_reprs import SmoothEmbeddingBlockWithExtraEmbeddings
 
 
 def make_reward_distributions(all_reward_distribution_configs: list):
@@ -34,7 +34,7 @@ def make_reward_distributions(all_reward_distribution_configs: list):
 
 
 def make_model(task_time_embedding_size: int, diffusion_time_embedding_size: int, sigma2x_schedule, time_between_cs_and_us: int, nr: int, device: str):
-    input_model = TimeEmbeddingBlockWithEmbeddings(
+    input_model = SmoothEmbeddingBlockWithExtraEmbeddings(
         total_time = time_between_cs_and_us + 1,    # Need one state for before (0), and one state for after (<time_between_cs_and_us>)
         time_embedding_dim = task_time_embedding_size,
         num_extra_embeddings = 1,       # Don't want the s=-1 state to have a smooth continuation of the others
@@ -83,9 +83,9 @@ def make_classical_conditioning_stimuli(wait_time: int, time_between_cs_and_us: 
 
     # XXX: This needs to have num_diffusion_timesteps in shape because the TimeEmbeddingBlock should not be used as an input model!
         # It's a hack that should be removed...
-    input_t = s_t.unsqueeze(-1).repeat(1, 1, num_diffusion_timesteps)
-    input_t_plus_1 = s_t_plus_1.unsqueeze(-1).repeat(1, 1, num_diffusion_timesteps)
-    input_all = s_all.unsqueeze(-1).repeat(1, 1, num_diffusion_timesteps)
+    input_t = s_t# .unsqueeze(-1).repeat(1, 1, num_diffusion_timesteps)
+    input_t_plus_1 = s_t_plus_1# .unsqueeze(-1).repeat(1, 1, num_diffusion_timesteps)
+    input_all = s_all# .unsqueeze(-1).repeat(1, 1, num_diffusion_timesteps)
 
     return (
         stimulus_array,

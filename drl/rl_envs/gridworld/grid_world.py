@@ -3,7 +3,7 @@ from torch import Tensor as _T
 
 import numpy as np
 
-from typing import Dict, List, Tuple, Type, Any
+from typing import Dict, List, Tuple, Type, Any, Iterable
 
 from drl.rl_envs.gridworld.cell_types import GridCell, TransitionInformationBatch
 
@@ -72,7 +72,7 @@ class GridWorld:
             for c_idx, char in enumerate(row):
 
                 cell_class, cell_kwargs = all_grid_config[char]
-                new_cell = cell_class(cell_id=len(self.cells), **cell_kwargs)
+                new_cell = cell_class(cell_id=len(self.cells), coords=(r_idx, c_idx), **cell_kwargs)
 
                 if c_idx > 0:
                     new_cell.add_neighbour(self.cells[-1], 'W')
@@ -131,7 +131,7 @@ class GridWorld:
         else:
             return existing_traj_new_states
 
-    def display_q_values(self, q_values: _T, axes: Axes) -> None:
+    def display_q_values(self, q_values: _T, axes: Iterable[Axes]) -> None:
         assert len(axes) == 4 == q_values.shape[1]
         assert len(q_values.shape) == 2
         reshaped_q_values = q_values.reshape(self.height, self.width, 4)
@@ -147,6 +147,25 @@ class GridWorld:
                 vmin = vmin, vmax = vmax, fmt=''
             )
             axes[a_i].set_title(a_name)
+
+    def display_q_value_samples(self, q_values_samples = _T, axes = Iterable[Iterable[Axes]]) -> None:
+
+        assert tuple(q_values_samples.shape[:-1]) == (len(self.cells), 4)
+        assert tuple(axes.shape) == (self.height, self.width)
+        assert q_values_samples.shape[-1]
+
+        q_values_samples = q_values_samples.reshape(self.height, self.width, 4, -1)
+
+        for row_idx, (ax_row, q_values_row) in enumerate(zip(axes, q_values_samples)):
+            for col_idx, (ax, q_values_col) in enumerate(zip(ax_row, q_values_row)):
+                for action_idx, (action_name, z_samples) in enumerate(zip('NEWS', q_values_col)):
+                    z_samples: _T
+                    ax: Axes
+                    grid_name = self.grid_text[row_idx, col_idx]
+                    ax.set_title(grid_name)
+                    ax.hist(z_samples.cpu().numpy(), 64, alpha = 0.7, histtype=u'step', density=True, label = action_name)
+        
+        ax.legend()
 
     
     # def take_step(self, actions: _T, current_states: _T, 

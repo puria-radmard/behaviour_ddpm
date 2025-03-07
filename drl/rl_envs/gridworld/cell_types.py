@@ -63,9 +63,10 @@ class GridCell(ABC):
     start_probability_logit: float = - float('inf') # Logit for softmax of starting states. Default to not starting there
     can_terminate: bool # Lets gridworld class know that trial can terminate from visiting here
 
-    def __init__(self, cell_id: int) -> None:
+    def __init__(self, cell_id: int, coords: Tuple[int]) -> None:
         self.neighbours: Dict[str, GridCell] = {} # keys one of N E W S
         self.cell_id = cell_id
+        self.coords = coords
 
     def add_neighbour(self, other: GridCell, direction: str) -> None:
         opposite_direction = OPPOSITE_DIRECTIONS[direction]
@@ -137,8 +138,8 @@ class StartPointCell(NormalCorridorCell):
     
     can_terminate = False
     
-    def __init__(self, cell_id: int, start_probability_logit: float) -> None:
-        super().__init__(cell_id)
+    def __init__(self, cell_id: int, coords: Tuple[int], start_probability_logit: float) -> None:
+        super().__init__(cell_id, coords)
         self.start_probability_logit = start_probability_logit
 
 
@@ -147,8 +148,8 @@ class RewardingTerminalCell(GridCell):
     
     can_terminate = True
 
-    def __init__(self, cell_id: int, mean: float, std: float) -> None:
-        super().__init__(cell_id)
+    def __init__(self, cell_id: int, coords: Tuple[int], mean: float, std: float) -> None:
+        super().__init__(cell_id, coords)
         self.mean = mean
         self.std = std
     
@@ -161,3 +162,21 @@ class RewardingTerminalCell(GridCell):
     def exit_reward(self, to_direction: str, exit_success: bool) -> float:
         raise TypeError('Should not be able to leave this!')
 
+
+class BimodalRewardingTerminalCell(RewardingTerminalCell):
+
+    def __init__(self, cell_id: int, coords: Tuple[int], mean1: float, std1: float, pi1: float, mean2: float, std2: float, pi2: float) -> None:
+        super(RewardingTerminalCell, self).__init__(cell_id, coords)
+        self.mean1 = mean1
+        self.std1 = std1
+        self.pi1 = pi1
+        self.mean2 = mean2
+        self.std2 = std2
+        self.pi2 = pi2
+        assert self.pi1 + self.pi2 == 1.0
+        self.means = [mean1, mean2]
+        self.stds = [std1, std2]
+        
+    def sample_reward(self):
+        mode = int(np.random.rand() < self.pi1)
+        return np.random.randn() * self.stds[mode] + self.means[mode]

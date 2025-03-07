@@ -8,7 +8,7 @@ from typing import Dict, Optional, List, Tuple
 
 from abc import ABC, abstractmethod
 
-from ddpm.model.time_repr import TimeEmbeddingBlock
+from ddpm.model.embedding_reprs import TimeEmbeddingBlock
 from ddpm.model.residual import VectoralResidualModel, UNetResidualModel
 from ddpm.model.input import InputModelBlock
 
@@ -293,11 +293,12 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
         input_vectors = self.input_model(
             network_input, self.T
         )  # forward time so need to be indexed backwards
+
         assert tuple(input_vectors.shape) == (
             *samples_shape,
             self.T,
             self.residual_model.input_size,
-        ), f"Expected input_vector shape to end with {(self.T, self.residual_model.input_size)} but got {tuple(input_vectors.shape)}"
+        ), f"Expected input_vector shape to be {(*samples_shape, self.T, self.residual_model.input_size)} but got {tuple(input_vectors.shape)}"
 
         base_samples = base_samples.unsqueeze(len(samples_shape))  # [..., 1, D]
         t_embeddings = self.time_embeddings(self.t_schedule)
@@ -322,12 +323,9 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
             sample_trajectory.append(base_samples.detach().cpu())
             early_x0_preds.append(early_x0_pred.detach().cpu())
 
-        sample_trajectory = torch.concat(
-            sample_trajectory, len(samples_shape)
-        )  # [..., T, <shape x>]
-        early_x0_preds = torch.concat(
-            early_x0_preds, len(samples_shape)
-        )  # [..., T, <shape x>]
+
+        sample_trajectory = torch.concat(sample_trajectory, len(samples_shape))  # [..., T, <shape x>]
+        early_x0_preds = torch.concat(early_x0_preds, len(samples_shape))  # [..., T, <shape x>]
 
         return {
             "sample_trajectory": sample_trajectory,
