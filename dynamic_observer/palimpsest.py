@@ -131,7 +131,7 @@ if __name__ == '__main__':
     from mpl_toolkits.axes_grid1 import make_axes_locatable
 
     num_selected_timesteps = 10
-    steps_between_displays = 100
+    steps_between_displays = 10
     batch_size = 4
     num_reverse_dynamics_steps = num_selected_timesteps * steps_between_displays + 1
 
@@ -143,7 +143,7 @@ if __name__ == '__main__':
     reports = torch.tensor([-3.0, 2.0, 0.0])
 
     all_mean_responses = palimpsest.all_mean_responses(probes, reports)
-    diffusion_conditioning_info = palimpsest.generate_diffusion_conditioning(probes[[2]], num_timesteps=num_reverse_dynamics_steps, rescale = 2.0)
+    diffusion_conditioning_info = palimpsest.generate_diffusion_conditioning(probes[[2]], num_timesteps=num_reverse_dynamics_steps - 1, rescale = 2.0)
     projected_mean_resposes = diffusion_conditioning_info['A'][0] @ all_mean_responses['joint_resp']
     
     fig, axes = plt.subplots(1, 2, figsize = (15, 10))
@@ -180,8 +180,8 @@ if __name__ == '__main__':
 
     ddm = CircularDDM(duration = noise_schedule.duration, discretiser=discretiser)
 
-    target_m0 = all_mean_responses['joint_resp'][None,None].repeat(num_reverse_dynamics_steps, batch_size, 1)
-    target_S0 = torch.eye(palimpsest.total_size)[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1, 1)
+    target_m0 = all_mean_responses['joint_resp'][None,None].repeat(num_reverse_dynamics_steps - 1, batch_size, 1)
+    target_S0 = torch.eye(palimpsest.total_size)[None,None].repeat(num_reverse_dynamics_steps - 1, batch_size, 1, 1)
     target_S0 = target_S0 * target_m0.unsqueeze(-1) / 10
     stimulus = (target_m0, target_S0)
 

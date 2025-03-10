@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 from torch import nn
 from torch import Tensor as _T
@@ -92,9 +94,10 @@ class ContinuousTimeNoiseSchedule(ABC):
         TODO: make this multimodal?
         """
         noising_factor = self.noising_factor(time = time)
+        reshaped_noising_factor = noising_factor.unsqueeze(-1)
         iden = torch.eye(S_x0.shape[-1])[*[None]*(len(S_x0.shape) - 2)].to(S_x0.device)
-        extra_var = (1.0 - noising_factor.square()) * iden
-        S_xt = (noising_factor.square() * S_x0) + extra_var
+        extra_var = (1.0 - reshaped_noising_factor.square()) * iden
+        S_xt = (reshaped_noising_factor.square() * S_x0) + extra_var
         return {
             'm_xt': m_x0 * noising_factor,
             'S_xt': S_xt
@@ -167,6 +170,39 @@ class LinearIncreaseNoiseSchedule(ContinuousTimeNoiseSchedule):
 
 
 
+class ScoreApproximatorDispatcher(ABC):
+
+    @abstractmethod
+    def approximate_score(self, x_t: _T, stimuli: Tuple[_T], t: _T, t_idx: _T):
+        """
+        TODO: document!
+        """
+
+
+
+class TrueScoreApproximatorDispatcher(ScoreApproximatorDispatcher):
+
+    def __init__(self, stimuli: Tuple[_T, ...], t: _T, noise_schedule: ContinuousTimeNoiseSchedule) -> None:
+        num_steps = t.shape[-2]
+        assert all(stim.shape[0] == num_steps for stim in stimuli)
+
+        reshaped_m_x0, reshaped_S_x0 = stimuli
+        assert len(reshaped_m_x0.shape) == 3 and len(reshaped_S_x0.shape) == 4
+        reshaped_m_x0 = reshaped_m_x0.unsqueeze(1)
+        reshaped_S_x0 = reshaped_S_x0.unsqueeze(1)
+        # t = t.unsqueeze()
+        t = t.unsqueeze(-2)
+        marginal_moments = noise_schedule.marginal_moments_gaussian_gt_distribution(reshaped_m_x0, reshaped_S_x0, t)
+        m_xt = marginal_moments['m_xt']
+        S_xt = marginal_moments['S_xt']
+
+        pass
+
+    def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T):
+        import pdb; pdb.set_trace()
+        pass
+
+
 class ScoreApproximator(nn.Module, ABC):
 
     @abstractmethod
@@ -176,6 +212,9 @@ class ScoreApproximator(nn.Module, ABC):
         t comes in all ones, with same number of axes
         """
         raise NotImplementedError
+
+    def prepare_dispatcher(self, stimuli: Tuple[_T], t: _T) -> ScoreApproximator | ScoreApproximatorDispatcher:
+        return self
 
 
 class TrueScore(ScoreApproximator):
@@ -191,7 +230,13 @@ class TrueScore(ScoreApproximator):
         super().__init__()
         self.noise_schedule = noise_schedule
 
+    def prepare_dispatcher(self, stimuli: Tuple[_T, ...], t: _T) -> ScoreApproximator | ScoreApproximatorDispatcher:
+        return TrueScoreApproximatorDispatcher(stimuli, t, self.noise_schedule)
+
     def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T):
+        """
+        Should not be directly accessed anymore!
+        """
         reshaped_m_x0, reshaped_S_x0 = stimuli
         assert len(reshaped_m_x0.shape) == 2 and len(reshaped_S_x0.shape) == 3
         reshaped_m_x0 = reshaped_m_x0.unsqueeze(1)
@@ -250,7 +295,7 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         TODO: docstring
         """
         assert tuple(start_samples.shape[-2:]) == (1, self.sample_dim)
-        assert time.shape[-1] == 1
+        assert time.shape[-1] == 1      
 
         delta_t = - torch.diff(time, dim = len(time.shape)-2) # reverse time! [...1, num_steps - 1, 1]
         assert (delta_t > 0.0).all(), "run_reverse_dynamics_inner must be provided with decreasing time - consult docstring for shapes!"
@@ -264,16 +309,24 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         conditioned = (observations is not None)
         if conditioned:
             observation_noise_covar_inverse = torch.linalg.inv(observation_noise_covar)
+        
+        # In some cases, e.g. the exact case, it's quicker to pass all the stimuli
+        # to the score 'approximator' than to pass them just-in-time
+        # In other cases, this will just return self
+        # score_approximator_dispatcher = self.score_approximator.prepare_dispatcher(
+        #     stimuli = stimulus, t = time[..., 1:, :]
+        # )
 
         for t_tilde_idx in tqdm(range(num_extra_steps)):
 
-            t_tilde = time[..., [t_tilde_idx], :]
+            t_tilde = time[..., [t_tilde_idx + 1], :]
+            beta_k = beta[..., [t_tilde_idx + 1], :]
             dt = delta_t[..., [t_tilde_idx], :]
-            beta_k = beta[..., [t_tilde_idx], :]
             x_k = trajectory[-1]
             step_stimuli = tuple(stim[t_tilde_idx] for stim in stimulus)
             # int_t_beta_k = int_t_beta[..., [t_tilde_idx], :]
 
+            # score_approx = score_approximator_dispatcher(x_t = x_k, stimuli = step_stimuli, t = t_tilde, t_tilde_idx = t_tilde_idx)
             score_approx = self.score_approximator.approximate_score(x_t = x_k, stimuli = step_stimuli, t = t_tilde)
 
             if conditioned:
@@ -315,9 +368,9 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         samples_shape = start_samples.shape         # [..., D]
         assert samples_shape[-1] == self.sample_dim
 
-        assert all(stim.shape[0] == num_steps for stim in stimulus)
+        assert all(stim.shape[0] == num_steps - 1 for stim in stimulus)
 
-        time = torch.linspace(start_time, end_time, num_steps)  # [num_steps]
+        time = torch.linspace(start_time, end_time, num_steps + 1)[1:]  # [num_steps]
         time = time.unsqueeze(-1)[*[None]*(len(samples_shape)-1)] # [num_steps] -> [num_steps, 1] -> [...1, num_steps, 1]
         start_samples = start_samples.unsqueeze(-2) # [..., 1, D]
 
@@ -346,9 +399,9 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
 
         for t_idx in range(num_extra_steps):
 
-            t = time[..., [t_idx], :]
+            t = time[..., [t_idx + 1], :]
+            beta_k = beta[..., [t_idx + 1], :]
             dt = delta_t[..., [t_idx], :]
-            beta_k = beta[..., [t_idx], :]
             x_k = trajectory[-1]
             # int_t_beta_k = int_t_beta[..., [t_idx], :]
 
@@ -402,8 +455,8 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         samples_shape = start_samples.shape         # [..., D]
         assert samples_shape[-1] == self.sample_dim
 
-        assert all(stim.shape[0] == num_steps for stim in stimulus)
-        assert observations.shape[0] == projection_matrix.shape[0] == observation_noise_covar.shape[0] == num_steps
+        assert all(stim.shape[0] == num_steps - 1 for stim in stimulus)
+        assert observations.shape[0] == projection_matrix.shape[0] == observation_noise_covar.shape[0] == num_steps - 1
 
         time = torch.linspace(start_time, end_time, num_steps)  # [num_steps]
         time = time.unsqueeze(-1)[*[None]*(len(samples_shape)-1)] # [num_steps] -> [num_steps, 1] -> [...1, num_steps, 1]
