@@ -178,7 +178,8 @@ if __name__ == '__main__':
         score_approximator=score_func, discretiser=discretiser
     )
 
-    ddm = CircularDDM(duration = noise_schedule.duration, discretiser=discretiser)
+    print('DDM HAS A DIFFERENT DURIATION TO DM')
+    ddm = CircularDDM(duration = 1.0, discretiser=discretiser)
 
     target_m0 = all_mean_responses['joint_resp'][None,None].repeat(num_reverse_dynamics_steps - 1, batch_size, 1)
     target_S0 = torch.eye(palimpsest.total_size)[None,None].repeat(num_reverse_dynamics_steps - 1, batch_size, 1, 1)
