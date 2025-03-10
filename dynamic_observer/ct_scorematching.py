@@ -191,7 +191,7 @@ class TrueScoreApproximatorDispatcher(ScoreApproximatorDispatcher):
         reshaped_m_x0, reshaped_S_x0 = stimuli
         assert len(reshaped_m_x0.shape) == 3 and len(reshaped_S_x0.shape) == 4
         reshaped_m_x0 = reshaped_m_x0.unsqueeze(-2)
-        reshaped_S_x0 = reshaped_S_x0.unsqueeze(-2)
+        reshaped_S_x0 = reshaped_S_x0.unsqueeze(-3)
 
         t = t.reshape(num_steps, *[1]* (len(reshaped_m_x0.shape) - 1))
 
@@ -210,7 +210,7 @@ class TrueScoreApproximatorDispatcher(ScoreApproximatorDispatcher):
 class ScoreApproximator(nn.Module, ABC):
 
     @abstractmethod
-    def approximate_score(self, x_t: _T, stimuli: Tuple[_T], t: _T):
+    def approximate_score(self, x_t: _T, stimuli: Tuple[_T], t: _T, **kwargs):
         """
         x_t comes in shape [..., D]
         t comes in all ones, with same number of axes
@@ -237,7 +237,7 @@ class TrueScore(ScoreApproximator):
     def prepare_dispatcher(self, stimuli: Tuple[_T, ...], t: _T) -> ScoreApproximator | ScoreApproximatorDispatcher:
         return TrueScoreApproximatorDispatcher(stimuli, t, self.noise_schedule)
 
-    def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T):
+    def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T, **kwargs):
         """
         Should not be directly accessed anymore!
         """
@@ -319,13 +319,13 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         # In other cases, this will just return self
 
         score_approximator_dispatcher = self.score_approximator.prepare_dispatcher(
-            stimuli = stimulus, t = time[0, ..., 1:, 0]
+            stimuli = stimulus, t = time[0, ..., :-1, 0]        # Not sure why but [1:] doesn't work here...!
         )
 
         for t_tilde_idx in tqdm(range(num_extra_steps)):
 
-            t_tilde = time[..., [t_tilde_idx + 1], :]
-            beta_k = beta[..., [t_tilde_idx + 1], :]
+            t_tilde = time[..., [t_tilde_idx], :]   # Not sure why but t_tilde_idx + 1 doesn't work here...!
+            beta_k = beta[..., [t_tilde_idx], :]    # Not sure why but t_tilde_idx + 1 doesn't work here...!
             dt = delta_t[..., [t_tilde_idx], :]
             x_k = trajectory[-1]
             step_stimuli = tuple(stim[t_tilde_idx] for stim in stimulus)
@@ -448,7 +448,6 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         start_time: float = None, end_time: float = 0.0,
     ) -> _T:
         """
-        XXX: TODO: ADD STEERING SCORE --> other methods
         aka generate samples
 
         Use Euler method to run reverse dynamics, evaluating at regular intervals
@@ -462,7 +461,7 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
         assert all(stim.shape[0] == num_steps - 1 for stim in stimulus)
         assert observations.shape[0] == projection_matrix.shape[0] == observation_noise_covar.shape[0] == num_steps - 1
 
-        time = torch.linspace(start_time, end_time, num_steps)  # [num_steps]
+        time = torch.linspace(start_time, end_time, num_steps + 1)[1:]  # [num_steps]  # [num_steps]
         time = time.unsqueeze(-1)[*[None]*(len(samples_shape)-1)] # [num_steps] -> [num_steps, 1] -> [...1, num_steps, 1]
         start_samples = start_samples.unsqueeze(-2) # [..., 1, D]
 
@@ -492,10 +491,10 @@ if __name__ == '__main__':
 
     target_m0 = torch.tensor([-50.0, -10.0])[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1)
     target_S0 = torch.tensor([[10.0, -3.0], [-3.0, 4.0]])[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1, 1)
-    stimulus = (target_m0, target_S0)
+    vector_stimulus = (target_m0, target_S0)
 
     base_samples = torch.randn(batch_size, 2)
-    all_reverse_trajectories = diffmodel.run_unconditioned_reverse_dynamics(base_samples, stimulus, num_reverse_dynamics_steps).cpu().numpy()
+    all_reverse_trajectories = diffmodel.run_unconditioned_reverse_dynamics(base_samples, vector_stimulus, num_reverse_dynamics_steps).cpu().numpy()
     example_reverse_trajectories = all_reverse_trajectories[:5]
     end_reverse_samples = all_reverse_trajectories[:,-1,:]
 
@@ -506,7 +505,7 @@ if __name__ == '__main__':
 
     base_samples = torch.randn(batch_size, 2)
     all_conditioned_reverse_trajectories = diffmodel.run_conditioned_reverse_dynamics(
-        base_samples, stimulus, num_reverse_dynamics_steps, observations, projection_matrix, observation_noise_covar
+        base_samples, vector_stimulus, num_reverse_dynamics_steps, observations, projection_matrix, observation_noise_covar
     ).cpu().numpy()
     example_conditioned_reverse_trajectories = all_conditioned_reverse_trajectories[:5]
     end_conditioned_reverse_samples = all_conditioned_reverse_trajectories[:,-1,:]
