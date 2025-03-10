@@ -16,8 +16,11 @@ class ScoreMatchingHelper(DDPMReverseProcessBase, ABC):
     """
     DDPMReverseProcessBase is based on the DDPM design which works with sample trajectories
 
+    This is intended for closed form distributions over data q(x_0), 
+        such that we can extract the real marginal q(x_t) = <q(x_t | x_0)>_{q(x_0)}
+
     The main (pretty much only) reason to keep inheritance from DDPMReverseProcessBase is to maintain
-        the relevant DDPMReverseProcessBase.generate_samples function
+        the relevant DDPMReverseProcessBase.generate_samples functions
 
         In the multiepoch case, we also want to inherit preparatory activity, which is effectively
         the same as sample generation
