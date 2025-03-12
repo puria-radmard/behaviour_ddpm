@@ -1,4 +1,4 @@
-from dynamic_observer.ct_scorematching import *
+from dynamic_observer.model import *
 
 from torch import Tensor as _T
 
@@ -165,20 +165,20 @@ def run_custom_dynamics(
 
         if True:
             cue_dimension_activation = x_k.reshape(x_k.shape[0], palimp.report_num_tc, palimp.probe_num_tc).mean(-2)
-            normed_cue_dimension_activation = (cue_dimension_activation / 10.0).softmax(-1)
+            normed_cue_dimension_activation = (cue_dimension_activation / 2.0).softmax(-1)
             diffs = rectify_angles(cued_probe_values.unsqueeze(-1) - palimp.probe_centers.unsqueeze(0))
             force_on_cue_repr = (diffs * normed_cue_dimension_activation).sum(-1)
 
-            current_cued_probe_values = rectify_angles(current_cued_probe_values + (0.15 * torch.randn_like(cued_probe_values)))
+            current_cued_probe_values = rectify_angles(current_cued_probe_values + (0.25 * torch.randn_like(cued_probe_values)))
             current_cued_probe_values = rectify_angles(current_cued_probe_values + (0.25 * force_on_cue_repr))
 
             axes.plot(palimp.probe_centers, cue_dimension_activation[0], color = 'blue', alpha = (t_tilde_idx + 10) / (num_extra_steps + 10))
 
-            diffusion_conditioning_info = palimp.generate_diffusion_conditioning(current_cued_probe_values, num_timesteps=1, rescale = 1.5)
-
-            A = diffusion_conditioning_info['A']
-            obs = diffusion_conditioning_info['y']
-            obs_covar = diffusion_conditioning_info['obs_covar']
+            diffusion_conditioning_info = palimp.generate_diffusion_conditioning(current_cued_probe_values.unsqueeze(1), num_timesteps=1, rescale = 1.5)
+            
+            A = diffusion_conditioning_info['A'][0] # one timestep
+            obs = diffusion_conditioning_info['y'][0]   # one timestep
+            obs_covar = diffusion_conditioning_info['obs_covar'][0] # one timestep
             obs_covar_inv = torch.inverse(obs_covar)
             
             assert x_k.shape[-2] == 1
@@ -294,14 +294,14 @@ if __name__ == '__main__':
     axes[1].plot(palimpsest.probe_centers.cpu().numpy(), projected_mean_resposes.cpu().numpy(), label = 'projected')
     axes[1].legend()
 
-    fig.savefig('/homes/pr450/repos/research_projects/sampling_ddpm/dynamic_observer/palimpsest_mean_resp.png')
+    fig.savefig('/homes/pr450/repos/research_projects/sampling_ddpm/dynamic_observer/z_palimpsest_sampling/palimpsest_mean_resp.png')
 
     fig, axes = plt.subplots(1, figsize = (5, 5))
     scaling_factor_time, scaling_factor = noise_schedule.summarise_noising_factor(100)
     axes.plot(scaling_factor_time.cpu().numpy(), scaling_factor.cpu().numpy())
     axes.set_ylim(0)
 
-    fig.savefig('/homes/pr450/repos/research_projects/sampling_ddpm/dynamic_observer/palimpsest_schedule.png')
+    fig.savefig('/homes/pr450/repos/research_projects/sampling_ddpm/dynamic_observer/z_palimpsest_sampling/palimpsest_schedule.png')
 
     fig, axes = plt.subplots(3, num_selected_timesteps + 2, figsize = ((2 + num_selected_timesteps) * 5, 3 * 5))
 
@@ -311,25 +311,27 @@ if __name__ == '__main__':
         axes[0,i_a].set_title(f'reverse step: {i_t+1} of {num_reverse_dynamics_steps}')
         im_unc = palimpsest.display_population_response(all_reverse_trajectories[0,i_t], axes[0,i_a])
         im_cond = palimpsest.display_population_response(all_conditioned_reverse_trajectories[0,i_t], axes[1,i_a])
-        im_cond = palimpsest.display_population_response(all_custom_reverse_trajectories[0,i_t], axes[2,i_a])
+        im_cust = palimpsest.display_population_response(all_custom_reverse_trajectories[0,i_t], axes[2,i_a])
+        
         axes[0,-2].plot(uncond_ddm_driver[i_t], - palimpsest.report_centers, label = i_t + 1)
         axes[1,-2].plot(cond_ddm_driver[i_t], - palimpsest.report_centers, label = i_t + 1)
         axes[2,-2].plot(custom_ddm_driver[i_t], - palimpsest.report_centers, label = i_t + 1)
 
+
+        divider = make_axes_locatable(axes[0,i_a])
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        fig.colorbar(im_unc, cax=cax, orientation='vertical')
+
+        divider = make_axes_locatable(axes[1,i_a])
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        fig.colorbar(im_cond, cax=cax, orientation='vertical')
+
+        divider = make_axes_locatable(axes[2,i_a])
+        cax = divider.append_axes('right', size='5%', pad=0.05)
+        fig.colorbar(im_cust, cax=cax, orientation='vertical')
+
     axes[0,-1].legend()
     axes[1,-1].legend()
-
-    divider = make_axes_locatable(axes[0,i_a])
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im_unc, cax=cax, orientation='vertical')
-
-    divider = make_axes_locatable(axes[1,i_a])
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im_cond, cax=cax, orientation='vertical')
-
-    divider = make_axes_locatable(axes[2,i_a])
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    fig.colorbar(im_cond, cax=cax, orientation='vertical')
 
 
     for i_tr in range(num_ddm_trials):
@@ -341,7 +343,7 @@ if __name__ == '__main__':
     axes[1,-1].set_aspect(1.0)
     axes[2,-1].set_aspect(1.0)
 
-    fig.savefig('/homes/pr450/repos/research_projects/sampling_ddpm/dynamic_observer/palimpsest_samples.png')
+    fig.savefig('/homes/pr450/repos/research_projects/sampling_ddpm/dynamic_observer/z_palimpsest_sampling/palimpsest_samples.png')
     ##########
 
 

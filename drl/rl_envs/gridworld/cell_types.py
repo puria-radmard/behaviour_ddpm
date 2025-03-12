@@ -83,7 +83,7 @@ class GridCell(ABC):
         entry_information = other_cell.attempt_enter(from_direction)
         exit_reward = self.exit_reward(direction, entry_information.success)
         return TransitionInformation(
-            transition_reward = entry_information.entry_reward + exit_reward,
+            transition_reward = [entry_information.entry_reward + exit_reward], # By default dim 1
             action = 'NEWS'.index(direction),
             old_cell = self,
             new_cell = (

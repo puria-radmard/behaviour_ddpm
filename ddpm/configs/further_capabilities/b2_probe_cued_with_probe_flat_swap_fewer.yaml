@@ -39,8 +39,8 @@ task_name: delayed_probe_cue_vectoral_spike_and_slab
 task_config:
 
   sample_size: 2
-  num_items: 3  # Less than Mallett
-  correct_probability: 0.5  # Lower than in Mallett 2022
+  num_items: 2  # Less than Mallett
+  correct_probability: 0.7
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
   

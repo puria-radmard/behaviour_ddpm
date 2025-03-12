@@ -39,7 +39,7 @@ task_name: delayed_probe_cue_vectoral_with_swap_function
 task_config:
 
   sample_size: 2
-  num_items: 3
+  num_items: 2
   swap_function_width: 1.0                      # Only difference to before!
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
