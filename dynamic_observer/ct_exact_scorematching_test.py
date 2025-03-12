@@ -9,7 +9,7 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    noise_schedule = LinearIncreaseNoiseSchedule(0.2, 0.2, duration = 50)
+    noise_schedule = LinearIncreaseNoiseSchedule(0.06, 0.15, duration = 15)
 
     score_func = TrueScore(noise_schedule = noise_schedule)
 
@@ -32,7 +32,6 @@ if __name__ == '__main__':
     example_reverse_trajectories = all_reverse_trajectories[:5]
     end_reverse_samples = all_reverse_trajectories[:,-1,:]
 
-    import pdb; pdb.set_trace()
 
     
     observations = 30.0 + torch.zeros(num_reverse_dynamics_steps-1, batch_size, 1)  # y

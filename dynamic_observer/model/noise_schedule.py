@@ -65,16 +65,27 @@ class ContinuousTimeNoiseSchedule(ABC):
     @torch.no_grad()
     def noise_and_conditional_score(self, x0: _T, time: _T) -> Dict[str, _T]:
         """
-        time and x0 have to have broadcastable shapes
+        x0 of shape [..., D]
+        time of shape [T, ...]
+
+        outputs of shape:
+            noising_factor          [T, ...]
+            epsilon                 [T, ..., D]
+            x_t                     [T, ..., D]
+            conditional_score       [T, ..., D]
         """
-        noising_factor = self.noising_factor(time = time)
-        epsilon = torch.randn_like(x0)
-        xt = (noising_factor * x0) + ((1.0 - noising_factor.square()).sqrt() * epsilon)
-        conditional_score = - epsilon / (1.0 - noising_factor.square())                 # XXX: Check before training!
+        nt, *extra_dims = time.shape
+        assert list(x0.shape[:-1]) == extra_dims
+        sample_dim = x0.shape[-1]
+
+        noising_factor = self.noising_factor(time = time).unsqueeze(-1)                     # [T, ..., 1]
+        epsilon = torch.randn(nt, *extra_dims, sample_dim, device = x0.device)              # [T, ..., D]
+        xt = (noising_factor * x0) + ((1.0 - noising_factor.square()).sqrt() * epsilon)     # [T, ..., D]
+        conditional_score = - epsilon / (1.0 - noising_factor.square()) # XXX: Check before training!   # [T, ..., D]
         return {
-            'noising_factor': noising_factor,
+            'noising_factor': noising_factor.squeeze(-1),
             'epsilon': epsilon,
-            'xt': xt,
+            'x_t': xt,
             'conditional_score': conditional_score
         }
 
@@ -82,19 +93,22 @@ class ContinuousTimeNoiseSchedule(ABC):
     def marginal_moments_gaussian_gt_distribution(self, m_x0: _T, S_x0: _T, time: _T) -> Dict[str, _T]:
         """
         Integrate p(x_0) = N(m_x0, S_x0) out of conditional moments, see class docstring
-        m_x0 of shape [..., d]
-        S_x0 of shape [..., d, d]
-        time has a broadcastable shape with m_x0
+        m_x0 of shape [T, ..., d]
+        S_x0 of shape [T, ..., d, d]
+        time of shape [T, ...]
+
+        Keep T at start of target distribution in case we want to change it over time!
 
         TODO: make this multimodal?
         """
-        noising_factor = self.noising_factor(time = time)
-        reshaped_noising_factor = noising_factor.unsqueeze(-1)
+        noising_factor = self.noising_factor(time = time)           # [T, ...]
+
+        reshaped_noising_factor = noising_factor[...,None,None]     # [T, ..., 1, 1]
         iden = torch.eye(S_x0.shape[-1])[*[None]*(len(S_x0.shape) - 2)].to(S_x0.device)
-        extra_var = (1.0 - reshaped_noising_factor.square()) * iden
+        extra_var = (1.0 - reshaped_noising_factor.square()) * iden     # [T, ..., d, d]
         S_xt = (reshaped_noising_factor.square() * S_x0) + extra_var
         return {
-            'm_xt': m_x0 * noising_factor,
+            'm_xt': m_x0 * noising_factor.unsqueeze(-1),
             'S_xt': S_xt
         }
 
@@ -122,8 +136,8 @@ class ContinuousTimeNoiseSchedule(ABC):
         output of shape [..., num_timepoints, D]
         """
         timepoints = torch.rand(num_timepoints) * self.duration
-        time = timepoints.reshape(*[1]*(len(x0.shape)-1), -1, 1)
-        return self.noise_and_conditional_score(x0=x0, time=time)
+        time = timepoints[:, *[None]].repeat(1, *x0.shape[:-1])
+        return time, self.noise_and_conditional_score(x0=x0, time=time)
 
 
 class ConstantTimeNoiseSchedule(ContinuousTimeNoiseSchedule):
@@ -159,7 +173,7 @@ class LinearIncreaseNoiseSchedule(ContinuousTimeNoiseSchedule):
         self.slope = end_noise_level - start_noise_level
 
         smallest_scaling_factor = self.summarise_noising_factor()[1][-1]
-        assert smallest_scaling_factor > 0.001, smallest_scaling_factor.item()
+        assert 0.01 > smallest_scaling_factor > 0.0001, smallest_scaling_factor.item()
     
     def beta(self, time: _T) -> _T:
         return self.start_noise_level + self.slope * time

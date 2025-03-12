@@ -19,11 +19,11 @@ class ScoreApproximator(nn.Module, ABC):
     def approximate_score(self, x_t: _T, stimuli: Tuple[_T], t: _T, **kwargs):
         """
         x_t comes in shape [..., D]
-        t comes in all ones, with same number of axes
+        t comes in shape [...]
         """
         raise NotImplementedError
 
-    def prepare_dispatcher(self, stimuli: Tuple[_T], t: _T) -> ScoreApproximator | ScoreApproximatorDispatcher:
+    def prepare_dispatcher(self, stimuli: Tuple[_T, ...], t: _T, **kwargs) -> ScoreApproximator | ScoreApproximatorDispatcher:
         return self
 
 
@@ -40,19 +40,12 @@ class TrueScore(ScoreApproximator):
         super().__init__()
         self.noise_schedule = noise_schedule
 
-    def prepare_dispatcher(self, stimuli: Tuple[_T, ...], t: _T) -> ScoreApproximator | ScoreApproximatorDispatcher:
+    def prepare_dispatcher(self, stimuli: Tuple[_T, ...], t: _T, **kwargs) -> ScoreApproximator | ScoreApproximatorDispatcher:
         return TrueScoreApproximatorDispatcher(stimuli, t, self.noise_schedule)
 
     def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T, **kwargs):
         raise Exception("Should not be directly accessed anymore!")
-        reshaped_m_x0, reshaped_S_x0 = stimuli
-        assert len(reshaped_m_x0.shape) == 2 and len(reshaped_S_x0.shape) == 3
-        reshaped_m_x0 = reshaped_m_x0.unsqueeze(1)
-        reshaped_S_x0 = reshaped_S_x0.unsqueeze(1)
-        marginal_moments = self.noise_schedule.marginal_moments_gaussian_gt_distribution(reshaped_m_x0, reshaped_S_x0, t)
-        m_xt = marginal_moments['m_xt']
-        S_xt = marginal_moments['S_xt']
-        return self.noise_schedule.marginal_score(m_xt, S_xt, x_t)
+
 
 
 class FCScoreApproximator(ScoreApproximator):
@@ -138,24 +131,26 @@ class FCScoreApproximator(ScoreApproximator):
         return self.time_layers(time_embs)
 
     def generate_main_input(self, x: _T, input_repr: _T, time_embedding: _T) -> _T:
-        import pdb; pdb.set_trace(header = 'make shapes work!')
-        network_input = torch.concat(
-            [x_reshaped, input_repr_reshaped, time_embedding_reshaped],
-            dim = -1
-        )
+        """
+        x [..., D]
+        input_repr [..., Din]
+        time_embedding [..., Dt]
+        """
+        network_input = torch.concat([x, input_repr, time_embedding], dim = -1)
         return network_input
 
     def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T, **kwargs):
         """
-        x_t of shape [..., 1, D_sample]
+        x_t of shape [..., D_sample]
         stimuli length 1, of shape [..., D_stim]
-        t of shape [1 * len(x_t.shape)]
+        t of shape [...]
+
+        During sampling [...] is just [B]
+        During training [...] can be [T, B]
         """
         assert len(stimuli) == 1, "Cannot have tuple stimuli for FCScoreApproximator yet!"
-        import pdb; pdb.set_trace(header = 'make shapes work!')
-
-        time_repr = self.generate_time_embedding(t)
-        input_repr = self.input_layers(stimuli[0])
+        time_repr = self.generate_time_embedding(t)                         # [..., Dt]
+        input_repr = self.input_layers(stimuli[0])                          # [..., Din]
         main_input = self.generate_main_input(x_t, input_repr, time_repr)
         return self.main_layers(main_input)
         
