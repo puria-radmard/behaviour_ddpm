@@ -9,7 +9,7 @@ import matplotlib.colors as colors
 
 from drl.rl_envs.gridworld.grid_world import GridWorld
 from drl.rl_envs.gridworld.cell_types import (
-    RewardingTerminalCell, BimodalRewardingTerminalCell
+    RewardingTerminalCell, BimodalRewardingTerminalCell, SpikyWallCell, WindyValveCell
 )
 
 from drl.rl_agents.gridworld.tabular_actor_critic import (
@@ -32,11 +32,14 @@ torch.set_default_device('cuda')
 # #################
 # """
 grid_text = """
-..S..
-.....
-..D..
-.....
-G...E
+XXXXX
+X...X
+X.X.X
+XCX.X
+X.6.X
+XXSXX
+XX.XX
+XXXXX
 """
 # grid_text = """
 # E..S..D
@@ -46,6 +49,9 @@ env = GridWorld(
     grid_config={
         'E': (BimodalRewardingTerminalCell, {'mean1': +10.0, 'std1': 2.0, 'mean2': -1.0, 'std2': 2.0, 'pi1': 0.4, 'pi2': 0.6}),
         'G': (RewardingTerminalCell, {'mean': +4.0, 'std': 2.0}),
+        'A': (RewardingTerminalCell, {'mean': +4.0, 'std': 2.0}),
+        'X': (SpikyWallCell, {}),
+        '6': (WindyValveCell, {'valve_side': 'S', 'spit_sides': 'WE'}),
         'D': (BimodalRewardingTerminalCell, {'mean1': -5.0, 'std1': 2.0, 'mean2': 7.0, 'std2': 2.0, 'pi1': 0.4, 'pi2': 0.6}),
     }
 )
@@ -58,32 +64,23 @@ lr = 0.01
 
 fig_path = '/homes/pr450/repos/research_projects/sampling_ddpm/drl/train'
 
-# actor_model = TabularActorModel(num_states=len(env.cells))
+actor_model = TabularActorModel(num_states=len(env.cells))
 
-actor_model = EpsGreedyActorModel(epsilon = 1.0, num_states=len(env.cells))
-assert len(list(actor_model.parameters())) == 0
+# actor_model = EpsGreedyActorModel(epsilon = 1.0, num_states=len(env.cells))
+# assert len(list(actor_model.parameters())) == 0
 
 # critic_model = TabularGridWorldCriticModel(num_states=len(env.cells), discount_factor=gamma)
 
-starting_sigma2= 0.3
-ultimate_sigma2= 0.3
-num_diffusion_timesteps = 20
-sigma2x_schedule = torch.linspace(starting_sigma2, ultimate_sigma2, num_diffusion_timesteps)
-std_schedule = torch.sqrt(sigma2x_schedule)
 diffusion_time_embedding_size = 16
 state_action_embedding_dim = 16
 
-magma = plt.get_cmap("magma")
-cNorm = colors.Normalize(vmin=1, vmax=num_diffusion_timesteps)
-diffusion_timesteps_colors_scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=magma)
-diffusion_timesteps_colors_scalarMap.set_array([])
-
 critic_model = UniqueEmbeddingDDPMCriticModel(
-# critic_model = FactoredEmbeddingDDPMCriticModel(
-    num_states = len(env.cells), discount_factor=gamma, num_actions_per_state=4,
-    state_action_embedding_dim=state_action_embedding_dim,
-    diffusion_time_embedding_size=diffusion_time_embedding_size,
-    sigma2x_schedule=sigma2x_schedule,
+    reward_dim = 1,
+    num_states = len(env.cells),
+    discount_factor = gamma,
+    num_actions_per_state = 4,
+    state_action_embedding_dim = state_action_embedding_dim,
+    diffusion_time_embedding_size = diffusion_time_embedding_size,
     device = 'cuda'
 )
 

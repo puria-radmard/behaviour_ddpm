@@ -8,9 +8,11 @@ from typing import Union, Optional, Tuple, Any
 from dataclasses import dataclass
 
 
-from ddpm.model.main.base import OneShotDDPMReverseProcess
-from ddpm.model.residual import VectoralResidualModel
 from ddpm.model.embedding_reprs import HierarchicalEmbeddingsBlock
+from dynamic_observer.model import (
+    LinearIncreaseNoiseSchedule, ContinuousTimeScoreMatchingDiffusionModel,
+    FCScoreApproximator, EulerDiscretiser,
+)
 
 
 from abc import ABC, abstractmethod
@@ -46,9 +48,9 @@ class GridWorldCriticModelBase(nn.Module, ABC):
 
     is_distributional: bool
     
-    def __init__(self, sample_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int) -> None:
+    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int) -> None:
         super().__init__()
-        self.sample_dim = sample_dim    # This is typicaly reward size, but could also be taken to include SR dimensionality
+        self.reward_dim = reward_dim    # This is typicaly reward size, but could also be taken to include SR dimensionality
         self.num_states = num_states
         self.num_actions_per_state = num_actions_per_state
         self.discount_factor = discount_factor
@@ -102,9 +104,9 @@ class TabularGridWorldCriticModel(GridWorldCriticModelBase):
 
     is_distributional = False
 
-    def __init__(self, sample_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int = 4) -> None:
-        super().__init__(sample_dim, num_states, discount_factor, num_actions_per_state)
-        self.register_parameter('values', torch.nn.Parameter(6 * torch.ones(num_states, num_actions_per_state, sample_dim).float()))
+    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int = 4) -> None:
+        super().__init__(reward_dim, num_states, discount_factor, num_actions_per_state)
+        self.register_parameter('values', torch.nn.Parameter(6 * torch.ones(num_states, num_actions_per_state, reward_dim).float()))
 
     def get_q_values(self, states: _T, actions: Optional[_T] = None) -> _T:
         if actions is None:
@@ -175,14 +177,38 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
     Outputs a set of samples for the dstate value, 
     """
 
-    def __init__(self, sample_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int, state_action_embedding_dim: int, diffusion_time_embedding_size: int, sigma2x_schedule, device: str) -> None:
-        super().__init__(sample_dim, num_states, discount_factor, num_actions_per_state)
+    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int, state_action_embedding_dim: int, diffusion_time_embedding_size: int, device: str) -> None:
+        super().__init__(reward_dim, num_states, discount_factor, num_actions_per_state)
 
         self.to(device)
 
-        input_model, input_size = self.make_input_model(state_action_embedding_dim, device)
-        residual_model = self.make_residual_model(input_size, sample_dim)
-        self.ddpm = self.make_ddpm_model(sigma2x_schedule, residual_model, input_model, diffusion_time_embedding_size, sample_dim, device)
+        self.input_model, input_size = self.make_input_model(state_action_embedding_dim, device)
+        self.diffmodel = self.make_smdm(reward_dim, input_size, diffusion_time_embedding_size)
+
+    def make_smdm(self, sample_dim: int, input_size: int, diffusion_time_embedding_size: int) -> ContinuousTimeScoreMatchingDiffusionModel:
+        
+        noise_schedule = LinearIncreaseNoiseSchedule(0.2, 0.2, duration = 50)
+
+        score_func = FCScoreApproximator(
+            sample_size = sample_dim,
+            hidden_layers = [16, 16, 16],
+            input_tensor_size = input_size,   # Flattened mu and Sigma
+            input_repr_size = input_size,
+            input_hidden_layers = None,
+            time_embedding_dim = diffusion_time_embedding_size,
+            time_embedding_hidden_layers = None,
+        )
+
+        discretiser = EulerDiscretiser()
+        
+        diffmodel = ContinuousTimeScoreMatchingDiffusionModel(
+            sample_dim=sample_dim, 
+            noise_schedule=noise_schedule, 
+            score_approximator=score_func, 
+            discretiser=discretiser
+        )
+
+        return diffmodel
 
     def make_input_model(self, state_action_embedding_dim: int, device: str):
         return HierarchicalEmbeddingsBlock(
@@ -190,28 +216,6 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
             num_embeddings = (self.num_states, self.num_actions_per_state),       # Don't want the s=-1 state to have a smooth continuation of the others
             device = device
         ), 2 * state_action_embedding_dim
-
-    def make_residual_model(self, input_size, diffusion_time_embedding_size, state_space_dim):
-        residual_model = VectoralResidualModel(
-            state_space_size = state_space_dim,                                  # Value function
-            recurrence_hidden_layers = [16, 16, 16],                # Smallish network
-            input_size = input_size,                  # Task time embeddings will be generated by the time embedding input model
-            time_embedding_size = diffusion_time_embedding_size,    # Diffusion time embeddings
-            nonlin_first = False                                    # Value function might be negative
-        )
-        return residual_model
-    
-    def make_ddpm_model(self, sigma2x_schedule, residual_model, input_model, diffusion_time_embedding_size, state_space_dim, device):
-
-        ddpm_model = OneShotDDPMReverseProcess(
-            sample_shape = [state_space_dim],                                    # Value function XXX make multidm
-            sigma2xt_schedule = sigma2x_schedule,                   # 20 diffusion steps
-            residual_model = residual_model,                        # Fully connected
-            input_model = input_model,                              # Fed with index values (integers)
-            time_embedding_size = diffusion_time_embedding_size,    # Diffusion time embeddings
-            device = device,
-        )
-        return ddpm_model
 
 
     def generate_inputs_from_states_and_actions(self, states: _T, actions: _T) -> Any:
@@ -240,8 +244,8 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
             samples_shape=[batch_size, num_samples]
 
         network_input = self.generate_inputs_from_states_and_actions(states, actions)
-        samples_dict = self.ddpm.generate_samples(network_input = network_input, samples_shape = samples_shape)
-        import pdb; pdb.set_trace(header = 'check size of samples_dict["samples"] --> [B, ..., D] ?')
+        import pdb; pdb.set_trace(header = 'check size of samples_dict["samples"] --> [B, ..., D] ? ALSO CHANGE SAMPLING METHOD CALL')
+        samples_dict = self.diffmodel.generate_samples(network_input = network_input, samples_shape = samples_shape)
 
         samples = samples_dict["samples"]
         if average:
@@ -255,16 +259,30 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
         Require transition batch so that we can condition on the right states and actions
         """
         import pdb; pdb.set_trace(header = 'shapes here!')
+
+
         num_samples = td1_info.target_q_samples.shape[-2]
         states = transition_batch.old_cell_ids.unsqueeze(-1).repeat(1, num_samples)
         actions = transition_batch.actions.unsqueeze(-1).repeat(1, num_samples)
         sa_inputs = self.generate_inputs_from_states_and_actions(states, actions)
+
         with torch.no_grad():
-            forward_process = self.ddpm.noise(x_0=td1_info.target_q_samples.detach()) # XXX: multidim!
-        epsilon_hat_dict = self.ddpm.residual(x_samples = forward_process["x_t"], network_input = sa_inputs)
-        stepwise_losses = (epsilon_hat_dict['epsilon_hat'] - forward_process["epsilon"]).square().mean(0).mean(0)
-        total_loss = stepwise_losses.mean()
-        import pdb; pdb.set_trace(header = 'stepwise_losses shape?')
+            noised_timepoints, noised_information = self.diffmodel.noise_schedule.random_noise(
+                x0 = td1_info.target_q_samples.detach(),
+                num_timepoints=self.noising_batch_size
+            )
+
+        approx_score = self.diffmodel.score_approximator.approximate_score(
+            x_t = noised_information['x_t'],
+            stimuli = sa_inputs,
+            t = noised_timepoints
+        )
+
+        real_score = noised_information['conditional_score']
+        total_loss = (real_score - approx_score).square().mean()
+
+        stepwise_losses = None  # XXX: fix timepoints?
+
         return total_loss, stepwise_losses
 
 
@@ -291,15 +309,19 @@ class UniqueEmbeddingDDPMCriticModelWithSuccessorRepresentationSampling(UniqueEm
         Last dimension is made up during logit transform of last Ds - 1 dimensions
     """
 
-    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int, state_action_embedding_dim: int, diffusion_time_embedding_size: int, sigma2x_schedule, device: str) -> None:
-        super().__init__(reward_dim, num_states, discount_factor, num_actions_per_state)
+    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int, state_action_embedding_dim: int, diffusion_time_embedding_size: int, device: str) -> None:
+
+        sample_dim = reward_dim + num_states - 1
+
+        super().__init__(
+            sample_dim, num_states, discount_factor, num_actions_per_state,
+            state_action_embedding_dim, diffusion_time_embedding_size, device
+        )
 
         self.to(device)
 
-        input_model, input_size = self.make_input_model(state_action_embedding_dim, device)
-        residual_model = self.make_residual_model(input_size, reward_dim + num_states - 1)
-        self.ddpm = self.make_ddpm_model(sigma2x_schedule, residual_model, input_model, diffusion_time_embedding_size, reward_dim + num_states - 1, device)
-    
+        self.input_model, input_size = self.make_input_model(state_action_embedding_dim, device)
+        self.diffmodel = self.make_smdm(sample_dim, input_size, diffusion_time_embedding_size)
     
     def get_targets(self, transition_batch: TransitionInformationBatch, next_actions: _T) -> GenerativeTD1ErrorUpdateInformation:
         """
@@ -322,6 +344,7 @@ class UniqueEmbeddingDDPMCriticModelWithSuccessorRepresentationSampling(UniqueEm
         return_targets = transition_batch.transition_rewards.unsqueeze(-2).repeat(1, start_state_value_samples.shape[-2], 1) # [B, Dr] -> [B, 1, Dr] -> [B, K, Dr]
 
         sr_targets = torch.zeros(transition_batch.transition_rewards.shape[0], self.num_states) # [B, Ds - 1]
+        
         import pdb; pdb.set_trace(header = 'correct infilling? ALSO NEED TO DO LOGIT TRANSFORM HERE')
         sr_targets[torch.arange(len(sr_targets)), transition_batch.new_cell_ids] = (1.0 - self.discount_factor) * 1.0
         sr_targets = sr_targets.unsqueeze(-2).repeat(1, start_state_value_samples.shape[-2], 1) # [B, K, Ds - 1]

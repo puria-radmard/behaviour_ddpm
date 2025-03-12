@@ -58,7 +58,7 @@ class FCScoreApproximator(ScoreApproximator):
         hidden_layers: List[int],
         input_tensor_size: int,             # XXX: extend to multiple inputs?
         input_repr_size: int,
-        input_hidden_layers: List[int],
+        input_hidden_layers: Optional[List[int]],
         time_embedding_dim: int,
         time_embedding_hidden_layers: Optional[List[int]] = None,
     ) -> None:
@@ -73,12 +73,16 @@ class FCScoreApproximator(ScoreApproximator):
         self.time_embedding_hidden_layers = time_embedding_hidden_layers
 
         # Input representation
-        self.input_layers = self.generate_fc_sequential(
-            input_size = input_tensor_size,
-            output_size = input_repr_size,
-            hidden_layers = input_hidden_layers,
-            non_linearity = nn.SiLU
-        )
+        if input_hidden_layers is None:
+            self.input_layers = nn.Identity()
+            assert input_repr_size == input_tensor_size
+        else:
+            self.input_layers = self.generate_fc_sequential(
+                input_size = input_tensor_size,
+                output_size = input_repr_size,
+                hidden_layers = input_hidden_layers,
+                non_linearity = nn.SiLU
+            )
 
         # Time representation body maps from trig representations of time to an actual
         # time embedding, which is passed onto the main body

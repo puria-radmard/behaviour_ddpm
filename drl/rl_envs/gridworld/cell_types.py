@@ -5,6 +5,8 @@ from torch import Tensor as _T
 
 import numpy as np
 
+import random
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, List
@@ -22,19 +24,19 @@ OPPOSITE_DIRECTIONS = {
 class EntryInformation:
     """
     Return index:
-        0: whether entry was succesful or not
-        1: whether transition was terminal or not
-        2: reward for entry
+        success: whether entry was succesful or not
+        terminal: whether transition was terminal or not
+        entry_reward: reward for entry
     Can have non-zero reward even if entry failed, e.g. a spike wall
     """
-    success: bool
+    resulting_cell: GridCell
     terminal: bool
     entry_reward: float
 
 
 @dataclass
 class TransitionInformation:
-    transition_reward: float
+    transition_reward: List[float]
     action: int
     old_cell: GridCell
     new_cell: GridCell
@@ -81,15 +83,13 @@ class GridCell(ABC):
         other_cell = self.neighbours[direction]
         from_direction = OPPOSITE_DIRECTIONS[direction]
         entry_information = other_cell.attempt_enter(from_direction)
-        exit_reward = self.exit_reward(direction, entry_information.success)
+        success = (entry_information.resulting_cell == other_cell)
+        exit_reward = self.exit_reward(direction, success)
         return TransitionInformation(
             transition_reward = [entry_information.entry_reward + exit_reward], # By default dim 1
             action = 'NEWS'.index(direction),
             old_cell = self,
-            new_cell = (
-                other_cell if entry_information.success 
-                else self
-            ),
+            new_cell = entry_information.resulting_cell,
             terminal = entry_information.terminal,
         )
 
@@ -116,7 +116,7 @@ class NormalCorridorCell(GridCell):
     can_terminate = False
 
     def attempt_enter(self, from_direction: str) -> EntryInformation:
-        return EntryInformation(True, False, 0.0)
+        return EntryInformation(self, False, 0.0)
     
     def exit_reward(self, to_direction: str, exit_success: bool) -> float:
         return 0.0
@@ -128,10 +128,43 @@ class NormalWallCell(GridCell):
     can_terminate = False
 
     def attempt_enter(self, from_direction: str) -> EntryInformation:
-        return EntryInformation(False, False, 0.0)
+        return EntryInformation(self.neighbours[from_direction], False, 0.0)
     
     def exit_reward(self, to_direction: str, exit_success: bool) -> float:
         raise TypeError('Should not be here ever!')
+
+
+class SpikyWallCell(GridCell):
+    
+    can_terminate = False
+
+    def attempt_enter(self, from_direction: str) -> EntryInformation:
+        return EntryInformation(self.neighbours[from_direction], False, -1.0)
+    
+    def exit_reward(self, to_direction: str, exit_success: bool) -> float:
+        raise TypeError('Should not be here ever!')
+
+
+class WindyValveCell(GridCell):
+    
+    can_terminate = False
+
+    def __init__(self, cell_id: int, coords: Tuple[int], valve_side: str, spit_sides: str) -> None:
+        super().__init__(cell_id, coords)
+        assert (valve_side in 'NEWS') and (len(valve_side) == 1)
+        assert set(spit_sides).issubset(set('NEWS'))
+        self.valve_side = valve_side
+        self.spit_sides = spit_sides
+
+    def attempt_enter(self, from_direction: str) -> EntryInformation:
+        if from_direction == self.valve_side:
+            randomly_chosen_cell = random.choice(self.spit_sides)
+            return EntryInformation(self.neighbours[randomly_chosen_cell], False, -1.0)
+
+        else:
+            return EntryInformation(self.neighbours[from_direction], False, -1.0)
+
+
     
 
 class StartPointCell(NormalCorridorCell):
@@ -157,7 +190,7 @@ class RewardingTerminalCell(GridCell):
         return np.random.randn() * self.std + self.mean
        
     def attempt_enter(self, from_direction: str) -> EntryInformation:
-        return EntryInformation(True, True, self.sample_reward())
+        return EntryInformation(self, True, self.sample_reward())
 
     def exit_reward(self, to_direction: str, exit_success: bool) -> float:
         raise TypeError('Should not be able to leave this!')
@@ -180,3 +213,5 @@ class BimodalRewardingTerminalCell(RewardingTerminalCell):
     def sample_reward(self):
         mode = int(np.random.rand() < self.pi1)
         return np.random.randn() * self.stds[mode] + self.means[mode]
+
+
