@@ -146,7 +146,7 @@ class GenerativeDistributionalGridWorldCriticModelBase(GridWorldCriticModelBase,
         """
         start_state_value_samples = self.get_q_values(transition_batch.old_cell_ids, transition_batch.actions, average = False) # [B, K, D]
 
-        targets = transition_batch.transition_rewards.unsqueeze(-2).repeat(1, start_state_value_samples.shape[-2]) # [B, D] -> [B, 1, D] -> [B, K, D]
+        targets = transition_batch.transition_rewards.unsqueeze(-2).repeat(1, start_state_value_samples.shape[-2], 1) # [B, D] -> [B, 1, D] -> [B, K, D]
         non_terminal_mask = ~transition_batch.terminal
 
         if non_terminal_mask.any():
@@ -156,8 +156,6 @@ class GenerativeDistributionalGridWorldCriticModelBase(GridWorldCriticModelBase,
         else:
             end_state_values = torch.zeros(0,targets.shape[1:])
 
-        import pdb; pdb.set_trace(header = 'check the shapes!')
-        
         return GenerativeTD1ErrorUpdateInformation(
             previous_q_samples=start_state_value_samples,
             previous_q=start_state_value_samples.mean(-2),
@@ -177,10 +175,13 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
     Outputs a set of samples for the dstate value, 
     """
 
-    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int, state_action_embedding_dim: int, diffusion_time_embedding_size: int, device: str) -> None:
+    def __init__(self, reward_dim: int, num_states: int, discount_factor: float, num_actions_per_state: int, state_action_embedding_dim: int, diffusion_time_embedding_size: int, num_generation_timesteps: int = 64, noising_batch_size: int = 256, device: str = 'cuda') -> None:
         super().__init__(reward_dim, num_states, discount_factor, num_actions_per_state)
 
         self.to(device)
+
+        self.num_generation_timesteps = num_generation_timesteps
+        self.noising_batch_size = noising_batch_size
 
         self.input_model, input_size = self.make_input_model(state_action_embedding_dim, device)
         self.diffmodel = self.make_smdm(reward_dim, input_size, diffusion_time_embedding_size)
@@ -214,6 +215,7 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
         return HierarchicalEmbeddingsBlock(
             time_embedding_dim = state_action_embedding_dim,
             num_embeddings = (self.num_states, self.num_actions_per_state),       # Don't want the s=-1 state to have a smooth continuation of the others
+            time_stack_dim = 0,
             device = device
         ), 2 * state_action_embedding_dim
 
@@ -244,10 +246,13 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
             samples_shape=[batch_size, num_samples]
 
         network_input = self.generate_inputs_from_states_and_actions(states, actions)
-        import pdb; pdb.set_trace(header = 'check size of samples_dict["samples"] --> [B, ..., D] ? ALSO CHANGE SAMPLING METHOD CALL')
-        samples_dict = self.diffmodel.generate_samples(network_input = network_input, samples_shape = samples_shape)
+        input_repr = self.input_model(network_input, self.num_generation_timesteps-1)
 
-        samples = samples_dict["samples"]
+        start_samples = torch.randn(*samples_shape, self.reward_dim, device = states.device)
+
+        sample_trajectory = self.diffmodel.run_unconditioned_reverse_dynamics(start_samples = start_samples, stimulus = (input_repr,), num_steps = self.num_generation_timesteps)
+        samples = sample_trajectory[...,-1,:]
+
         if average:
             return samples.mean(-2)
         else:
@@ -258,23 +263,24 @@ class FactoredEmbeddingDDPMCriticModel(GenerativeDistributionalGridWorldCriticMo
         Residual loss on the whole diffusion process
         Require transition batch so that we can condition on the right states and actions
         """
-        import pdb; pdb.set_trace(header = 'shapes here!')
-
 
         num_samples = td1_info.target_q_samples.shape[-2]
         states = transition_batch.old_cell_ids.unsqueeze(-1).repeat(1, num_samples)
         actions = transition_batch.actions.unsqueeze(-1).repeat(1, num_samples)
         sa_inputs = self.generate_inputs_from_states_and_actions(states, actions)
+        
 
         with torch.no_grad():
             noised_timepoints, noised_information = self.diffmodel.noise_schedule.random_noise(
-                x0 = td1_info.target_q_samples.detach(),
-                num_timepoints=self.noising_batch_size
+                x0 = td1_info.target_q_samples.detach(),        # [B, K, 1]
+                num_timepoints=self.noising_batch_size          # T
             )
+
+        input_reprs = self.input_model(sa_inputs, self.noising_batch_size)
 
         approx_score = self.diffmodel.score_approximator.approximate_score(
             x_t = noised_information['x_t'],
-            stimuli = sa_inputs,
+            stimuli = (input_reprs,),
             t = noised_timepoints
         )
 
@@ -292,7 +298,8 @@ class UniqueEmbeddingDDPMCriticModel(FactoredEmbeddingDDPMCriticModel):
         return HierarchicalEmbeddingsBlock(
             time_embedding_dim = 2 * state_action_embedding_dim,    # For equity!
             num_embeddings = (self.num_states * self.num_actions_per_state,),       # Don't want the s=-1 state to have a smooth continuation of the others
-            device = device
+            time_stack_dim = 0,
+            device = device,
         ), 2 * state_action_embedding_dim
 
     def generate_inputs_from_states_and_actions(self, states: _T, actions: _T) -> Any:
@@ -345,8 +352,9 @@ class UniqueEmbeddingDDPMCriticModelWithSuccessorRepresentationSampling(UniqueEm
 
         sr_targets = torch.zeros(transition_batch.transition_rewards.shape[0], self.num_states) # [B, Ds - 1]
         
+        sr_targets[torch.arange(len(sr_targets)), transition_batch.new_cell_ids] = (1.0 - self.discount_factor)
+
         import pdb; pdb.set_trace(header = 'correct infilling? ALSO NEED TO DO LOGIT TRANSFORM HERE')
-        sr_targets[torch.arange(len(sr_targets)), transition_batch.new_cell_ids] = (1.0 - self.discount_factor) * 1.0
         sr_targets = sr_targets.unsqueeze(-2).repeat(1, start_state_value_samples.shape[-2], 1) # [B, K, Ds - 1]
         
         targets = torch.concat([return_targets, sr_targets], -1)
@@ -356,6 +364,9 @@ class UniqueEmbeddingDDPMCriticModelWithSuccessorRepresentationSampling(UniqueEm
         if non_terminal_mask.any():
             with torch.no_grad():
                 end_state_values_and_srs = self.get_q_values(transition_batch.new_cell_ids[non_terminal_mask], next_actions, average=False).detach()    # [B non-term, K, D]
+
+
+
                 targets[non_terminal_mask] += (self.discount_factor * end_state_values_and_srs)
 
         else:

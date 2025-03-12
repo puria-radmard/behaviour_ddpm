@@ -138,8 +138,12 @@ class SpikyWallCell(GridCell):
     
     can_terminate = False
 
+    def __init__(self, cell_id: int, coords: Tuple[int], penalty: float) -> None:
+        super().__init__(cell_id, coords)
+        self.penalty = penalty
+
     def attempt_enter(self, from_direction: str) -> EntryInformation:
-        return EntryInformation(self.neighbours[from_direction], False, -1.0)
+        return EntryInformation(self.neighbours[from_direction], False, -self.penalty)
     
     def exit_reward(self, to_direction: str, exit_success: bool) -> float:
         raise TypeError('Should not be here ever!')
@@ -149,22 +153,24 @@ class WindyValveCell(GridCell):
     
     can_terminate = False
 
-    def __init__(self, cell_id: int, coords: Tuple[int], valve_side: str, spit_sides: str) -> None:
+    def __init__(self, cell_id: int, coords: Tuple[int], valve_side: str, spit_sides: str, entry_penalty: float) -> None:
         super().__init__(cell_id, coords)
         assert (valve_side in 'NEWS') and (len(valve_side) == 1)
         assert set(spit_sides).issubset(set('NEWS'))
         self.valve_side = valve_side
         self.spit_sides = spit_sides
+        self.entry_penalty = entry_penalty
 
     def attempt_enter(self, from_direction: str) -> EntryInformation:
         if from_direction == self.valve_side:
             randomly_chosen_cell = random.choice(self.spit_sides)
-            return EntryInformation(self.neighbours[randomly_chosen_cell], False, -1.0)
+            return EntryInformation(self.neighbours[randomly_chosen_cell], False, 0.0)
 
         else:
-            return EntryInformation(self.neighbours[from_direction], False, -1.0)
+            return EntryInformation(self.neighbours[from_direction], False, -self.entry_penalty)
 
-
+    def exit_reward(self, to_direction: str, exit_success: bool) -> float:
+        raise TypeError('Should not be here ever!')
     
 
 class StartPointCell(NormalCorridorCell):

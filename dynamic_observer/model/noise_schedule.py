@@ -136,7 +136,7 @@ class ContinuousTimeNoiseSchedule(ABC):
         output of shape [..., num_timepoints, D]
         """
         timepoints = torch.rand(num_timepoints) * self.duration
-        time = timepoints[:, *[None]].repeat(1, *x0.shape[:-1])
+        time = timepoints[:, *[None]*len(x0.shape[:-1])].repeat(1, *x0.shape[:-1])
         return time, self.noise_and_conditional_score(x0=x0, time=time)
 
 
@@ -184,3 +184,19 @@ class LinearIncreaseNoiseSchedule(ContinuousTimeNoiseSchedule):
             + 0.5 * self.slope * time.square()
         )
 
+
+class CosineNoiseSchedule(ContinuousTimeNoiseSchedule):
+
+    def __init__(self, mag: float, duration: float) -> None:
+        super().__init__(duration)
+        self.mag = mag
+        self.factor = torch.pi / 2 / self.duration
+
+        smallest_scaling_factor = self.summarise_noising_factor()[1][-1]
+        assert 0.01 > smallest_scaling_factor > 0.0001, smallest_scaling_factor.item()
+
+    def beta(self, time: _T) -> _T:
+        return 1.0 - self.mag * (self.factor * time).cos()
+    
+    def int_t_beta(self, time: _T) -> _T:
+        return time - ((self.mag / self.factor) * (self.factor * time).sin())

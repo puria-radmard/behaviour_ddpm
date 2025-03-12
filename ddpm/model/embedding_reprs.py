@@ -90,7 +90,7 @@ class SmoothEmbeddingBlockWithExtraEmbeddings(TimeEmbeddingBlock):
 
 
 class HierarchicalEmbeddingsBlock(nn.Module):
-    def __init__(self, time_embedding_dim: int, num_embeddings: Tuple[int], device="cuda"):
+    def __init__(self, time_embedding_dim: int, num_embeddings: Tuple[int], time_stack_dim = -2, device="cuda"):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embeddings = nn.ModuleList(
@@ -99,6 +99,7 @@ class HierarchicalEmbeddingsBlock(nn.Module):
         self.device = device
         self.to(device)
         self.network_input_size = time_embedding_dim * len(num_embeddings)
+        self.time_stack_dim = time_stack_dim
 
     def forward(self, embedding_idx: List[_T], num_diffusion_timesteps: int) -> _T:
         """
@@ -108,5 +109,5 @@ class HierarchicalEmbeddingsBlock(nn.Module):
         all_embeddings = []
         for embedding_farm, eidx in zip(self.embeddings, embedding_idx):
             all_embeddings.append(embedding_farm(eidx))
-        all_embeddings = torch.concat(all_embeddings, -1).unsqueeze(-2).repeat_interleave(num_diffusion_timesteps, -2)
-        return all_embeddings
+        stacked_embeddings = torch.concat(all_embeddings, -1).unsqueeze(self.time_stack_dim).repeat_interleave(num_diffusion_timesteps, self.time_stack_dim)
+        return stacked_embeddings

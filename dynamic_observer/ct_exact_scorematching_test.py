@@ -21,7 +21,7 @@ if __name__ == '__main__':
     )
 
     batch_size = 64
-    num_reverse_dynamics_steps = 100
+    num_reverse_dynamics_steps = 64
 
     target_m0 = torch.tensor([-50.0, -10.0])[None,None].repeat(num_reverse_dynamics_steps-1, batch_size, 1)
     target_S0 = torch.tensor([[10.0, -3.0], [-3.0, 4.0]])[None,None].repeat(num_reverse_dynamics_steps-1, batch_size, 1, 1)

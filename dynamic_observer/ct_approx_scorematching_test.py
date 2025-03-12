@@ -13,7 +13,8 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    noise_schedule = LinearIncreaseNoiseSchedule(0.2, 0.2, duration = 50)
+    noise_schedule = LinearIncreaseNoiseSchedule(1.9, 1.9, duration = 5)
+    # noise_schedule = CosineNoiseSchedule(mag = 0.9, duration = 30)
 
     score_func = FCScoreApproximator(
         sample_size = 2,
@@ -56,7 +57,7 @@ if __name__ == '__main__':
     parameters = list(diffmodel.parameters())
     optimised = len(parameters) > 0
     if optimised:
-        optim = torch.optim.Adam(diffmodel.parameters(), lr = 0.01)
+        optim = torch.optim.Adam(diffmodel.parameters(), lr = 0.001)
 
     
     for opt_iter in tqdm(range(10000)):

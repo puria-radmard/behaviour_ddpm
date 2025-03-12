@@ -34,7 +34,6 @@ torch.set_default_device('cuda')
 grid_text = """
 XXXXX
 X...X
-X.X.X
 XCX.X
 X.6.X
 XXSXX
@@ -47,20 +46,20 @@ XXXXX
 env = GridWorld(
     grid_text= grid_text,
     grid_config={
-        'E': (BimodalRewardingTerminalCell, {'mean1': +10.0, 'std1': 2.0, 'mean2': -1.0, 'std2': 2.0, 'pi1': 0.4, 'pi2': 0.6}),
-        'G': (RewardingTerminalCell, {'mean': +4.0, 'std': 2.0}),
-        'A': (RewardingTerminalCell, {'mean': +4.0, 'std': 2.0}),
-        'X': (SpikyWallCell, {}),
-        '6': (WindyValveCell, {'valve_side': 'S', 'spit_sides': 'WE'}),
-        'D': (BimodalRewardingTerminalCell, {'mean1': -5.0, 'std1': 2.0, 'mean2': 7.0, 'std2': 2.0, 'pi1': 0.4, 'pi2': 0.6}),
+        #'E': (BimodalRewardingTerminalCell, {'mean1': +10.0, 'std1': 2.0, 'mean2': -1.0, 'std2': 2.0, 'pi1': 0.4, 'pi2': 0.6}),
+        #'G': (RewardingTerminalCell, {'mean': +4.0, 'std': 2.0}),
+        'C': (RewardingTerminalCell, {'mean': +500.0, 'std': 20.0}),
+        'X': (SpikyWallCell, {'penalty': 50}),
+        '6': (WindyValveCell, {'valve_side': 'S', 'spit_sides': 'WE', 'entry_penalty': 50}),
+        #'D': (BimodalRewardingTerminalCell, {'mean1': -5.0, 'std1': 2.0, 'mean2': 7.0, 'std2': 2.0, 'pi1': 0.4, 'pi2': 0.6}),
     }
 )
 
 
 batch_size = 64
 remaining_terminations = 64 * 64 * 64
-gamma = 0.95
-lr = 0.01
+gamma = 0.9
+lr = 0.001
 
 fig_path = '/homes/pr450/repos/research_projects/sampling_ddpm/drl/train'
 
@@ -72,7 +71,7 @@ actor_model = TabularActorModel(num_states=len(env.cells))
 # critic_model = TabularGridWorldCriticModel(num_states=len(env.cells), discount_factor=gamma)
 
 diffusion_time_embedding_size = 16
-state_action_embedding_dim = 16
+state_action_embedding_dim = 4
 
 critic_model = UniqueEmbeddingDDPMCriticModel(
     reward_dim = 1,
@@ -84,8 +83,6 @@ critic_model = UniqueEmbeddingDDPMCriticModel(
     device = 'cuda'
 )
 
-plot_model_schedules(critic_model.ddpm, os.path.join(fig_path, "sigma_schedule_unrolling.png"))
-
 
 optim = torch.optim.Adam(list(actor_model.parameters()) + list(critic_model.parameters()), lr = lr)
 
@@ -96,8 +93,6 @@ all_step_rewards = []
 all_step_rewards_x = []
 all_critic_loss = []
 all_actor_loss = []
-
-all_diffusion_stepwise_mse = np.zeros([0, num_diffusion_timesteps])
 
 ticker = -1
 
@@ -133,7 +128,7 @@ while remaining_terminations > 0:
     actor_loss = actor_model.get_loss(
         action_probs = action_probs,
         action_choices = action_choices,
-        current_state_action_values = td1_info.previous_q.detach()
+        current_state_action_values = td1_info.previous_q.detach()[...,0]   # Only the first reward dim for now!
     )
 
     # Run optimisation
@@ -144,7 +139,7 @@ while remaining_terminations > 0:
     optim.step()
  
     if new_transitions.terminal.any():
-        all_step_rewards.append(new_transitions.transition_rewards[new_transitions.terminal].mean().item())
+        all_step_rewards.append(new_transitions.transition_rewards[new_transitions.transition_rewards!=0].mean().item())
         all_step_rewards_x.append(ticker)
     all_critic_loss.append(critic_loss.item())
     all_actor_loss.append(actor_loss.item())
@@ -173,21 +168,6 @@ while remaining_terminations > 0:
             all_step_rewards_axes = fig.add_subplot(gs[:ax_unit*loss_margin_rows,:env.width])
             all_critic_loss_axes = fig.add_subplot(gs[:ax_unit*loss_margin_rows,env.width:2 * env.width])
             all_actor_loss_axes = fig.add_subplot(gs[:ax_unit*loss_margin_rows,2 * env.width:3 * env.width])
-            
-            all_stepwise_loss_axes = fig.add_subplot(gs[:ax_unit*loss_margin_rows,3 * env.width:])
-            all_stepwise_loss_axes.set_title("Individual diffusion timesteps MSE")
-            for h, trace in enumerate(
-                all_diffusion_stepwise_mse.T
-            ):
-                color = diffusion_timesteps_colors_scalarMap.to_rgba(h + 1)
-                all_stepwise_loss_axes.plot(trace, color=color)
-            cax = inset_axes(all_stepwise_loss_axes, width="30%", height=1.0, loc=3)
-            plt.colorbar(
-                diffusion_timesteps_colors_scalarMap,
-                cax=cax,
-                ticks=range(1, num_diffusion_timesteps, 10),
-                orientation="vertical",
-            )
 
             all_histogram_axes = []
             for i_row in range(env.height):
@@ -206,12 +186,12 @@ while remaining_terminations > 0:
             all_histogram_axes = np.array(all_histogram_axes)
 
             with torch.no_grad():
+                print('HISTOGRAMMING')
                 histable_values = critic_model.get_q_values(
                     states = torch.arange(len(env.cells)),
                     average = False
                 )
-
-            env.display_q_value_samples(q_values_samples = histable_values.detach(), axes = all_histogram_axes)
+            env.display_q_value_samples(q_values_samples = histable_values.detach()[...,0], axes = all_histogram_axes)  # Only plotting first reward dim for now!
             
         else:
             fig, axes = plt.subplots(4, 2, figsize = (20, 10))

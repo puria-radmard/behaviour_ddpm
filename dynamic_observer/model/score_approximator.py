@@ -117,12 +117,15 @@ class FCScoreApproximator(ScoreApproximator):
 
     @staticmethod
     def generate_fc_sequential(input_size: int, output_size: int, hidden_layers: List[int], non_linearity: Type[nn.Module]) -> nn.Sequential:
-        main_layers = [nn.Linear(input_size, hidden_layers[0]), non_linearity()]
-        for h_in, h_out in zip(hidden_layers[:-1], hidden_layers[1:]):
-            main_layers.extend([nn.Linear(h_in, h_out), non_linearity()])
-        main_layers.append(nn.Linear(hidden_layers[-1], output_size))
-        main_layers = nn.Sequential(*main_layers)
-        return main_layers
+        if len(hidden_layers):
+            main_layers = [nn.Linear(input_size, hidden_layers[0]), non_linearity()]
+            for h_in, h_out in zip(hidden_layers[:-1], hidden_layers[1:]):
+                main_layers.extend([nn.Linear(h_in, h_out), non_linearity()])
+            main_layers.append(nn.Linear(hidden_layers[-1], output_size))
+            main_layers = nn.Sequential(*main_layers)
+            return main_layers
+        else:
+            return nn.Linear(input_size, output_size)
 
     def generate_time_embedding(self, t: _T) -> _T:
         """

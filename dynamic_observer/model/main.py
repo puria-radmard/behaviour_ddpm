@@ -90,6 +90,7 @@ class ContinuousTimeScoreMatchingDiffusionModel(nn.Module):
             # drift = - (0.5 * beta_k * x_k) - ((beta_k * (1.0 - (-2 * int_t_beta_k).exp())) * score_approx)    # f(x, t) - g(t)^2 * s(x, t)
             # diffusion = (beta_k * (1.0 - (-2 * int_t_beta_k).exp())).sqrt()             # g(t) dW_t
             next_step = self.discretiser.step(x_k, - drift, diffusion, dt)    # Reverse time!
+
             trajectory.append(next_step)
 
         return torch.stack(trajectory, -2)

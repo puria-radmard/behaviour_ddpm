@@ -162,6 +162,8 @@ class GridWorld:
                     z_samples: _T
                     ax: Axes
                     grid_name = self.grid_text[row_idx, col_idx]
+                    if grid_name not in '.S':
+                        continue
                     ax.set_title(grid_name)
                     ax.hist(z_samples.cpu().numpy(), 64, alpha = 0.7, histtype=u'step', density=True, label = action_name)
         
