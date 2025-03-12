@@ -23,8 +23,8 @@ if __name__ == '__main__':
     batch_size = 64
     num_reverse_dynamics_steps = 100
 
-    target_m0 = torch.tensor([-50.0, -10.0])[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1)
-    target_S0 = torch.tensor([[10.0, -3.0], [-3.0, 4.0]])[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1, 1)
+    target_m0 = torch.tensor([-50.0, -10.0])[None,None].repeat(num_reverse_dynamics_steps-1, batch_size, 1)
+    target_S0 = torch.tensor([[10.0, -3.0], [-3.0, 4.0]])[None,None].repeat(num_reverse_dynamics_steps-1, batch_size, 1, 1)
     vector_stimulus = (target_m0, target_S0)
 
     base_samples = torch.randn(batch_size, 2)
@@ -32,10 +32,12 @@ if __name__ == '__main__':
     example_reverse_trajectories = all_reverse_trajectories[:5]
     end_reverse_samples = all_reverse_trajectories[:,-1,:]
 
+    import pdb; pdb.set_trace()
+
     
-    observations = 30.0 + torch.zeros(num_reverse_dynamics_steps, batch_size, 1)  # y
-    projection_matrix = torch.tensor([[0.1961, -0.9806]])[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1, 1)  # A
-    observation_noise_covar = torch.tensor([[1.0, 0.0], [0.0, 1.0]])[None,None].repeat(num_reverse_dynamics_steps, batch_size, 1, 1)
+    observations = 30.0 + torch.zeros(num_reverse_dynamics_steps-1, batch_size, 1)  # y
+    projection_matrix = torch.tensor([[0.1961, -0.9806]])[None,None].repeat(num_reverse_dynamics_steps-1, batch_size, 1, 1)  # A
+    observation_noise_covar = torch.tensor([[1.0, 0.0], [0.0, 1.0]])[None,None].repeat(num_reverse_dynamics_steps-1, batch_size, 1, 1)
 
     base_samples = torch.randn(batch_size, 2)
     all_conditioned_reverse_trajectories = diffmodel.run_conditioned_reverse_dynamics(

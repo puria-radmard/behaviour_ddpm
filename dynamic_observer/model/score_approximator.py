@@ -93,8 +93,8 @@ class FCScoreApproximator(ScoreApproximator):
             time_embedding_hidden_layers = [time_embedding_dim]
         
         self.time_layers = self.generate_fc_sequential(
-            input_size = time_embedding_hidden_layers,
-            output_size = time_embedding_hidden_layers,
+            input_size = time_embedding_dim,
+            output_size = time_embedding_dim,
             hidden_layers = time_embedding_hidden_layers,
             non_linearity = nn.SiLU
         )
@@ -112,8 +112,8 @@ class FCScoreApproximator(ScoreApproximator):
         factor = (
             2
             * torch.arange(
-                start=0, end=self.time_embedding_dim // 2, dtype=torch.float32,
-            )
+                start=0, end=1 + self.time_embedding_dim // 2, dtype=torch.float32,
+            )[1:]
             / self.time_embedding_dim
         )
         self.register_buffer('factor', factor)  # shaped [time_embedding_dim / 2]
@@ -132,9 +132,9 @@ class FCScoreApproximator(ScoreApproximator):
         t comes in any shape [...], returns shape [..., time_embedding_dim]
         """
         t_reshape = t.unsqueeze(-1)
-        factor = self.factor[*[None]*len(t_reshape.shape)]
+        factor = self.factor[*[None]*len(t.shape)]
         times = t_reshape / factor
-        time_embs = torch.cat([torch.sin(times), torch.cos(times)], dim=1)
+        time_embs = torch.cat([torch.sin(times), torch.cos(times)], dim=-1)
         return self.time_layers(time_embs)
 
     def generate_main_input(self, x: _T, input_repr: _T, time_embedding: _T) -> _T:
@@ -147,9 +147,9 @@ class FCScoreApproximator(ScoreApproximator):
 
     def approximate_score(self, x_t: _T, stimuli: Tuple[_T, ...], t: _T, **kwargs):
         """
-        x_t of shape XXX
-        stimuli length 1, of shape XXX
-        t of shape XXX
+        x_t of shape [..., 1, D_sample]
+        stimuli length 1, of shape [..., D_stim]
+        t of shape [1 * len(x_t.shape)]
         """
         assert len(stimuli) == 1, "Cannot have tuple stimuli for FCScoreApproximator yet!"
         import pdb; pdb.set_trace(header = 'make shapes work!')

@@ -35,8 +35,9 @@ class ContinuousTimeNoiseSchedule(ABC):
 
     duration: float
 
-    def __init__(self) -> None:
+    def __init__(self, duration: float) -> None:
         super().__init__()
+        self.duration = duration
 
     @abstractmethod
     def beta(self, time: _T) -> _T:
@@ -69,7 +70,7 @@ class ContinuousTimeNoiseSchedule(ABC):
         noising_factor = self.noising_factor(time = time)
         epsilon = torch.randn_like(x0)
         xt = (noising_factor * x0) + ((1.0 - noising_factor.square()).sqrt() * epsilon)
-        conditional_score = - epsilon / (1.0 - noising_factor.square()).sqrt()                 # XXX: Check before training!
+        conditional_score = - epsilon / (1.0 - noising_factor.square())                 # XXX: Check before training!
         return {
             'noising_factor': noising_factor,
             'epsilon': epsilon,
@@ -115,11 +116,20 @@ class ContinuousTimeNoiseSchedule(ABC):
         time = torch.linspace(0, self.duration, num_points)
         return time, self.noising_factor(time=time)
 
+    def random_noise(self, x0: _T, num_timepoints: int) -> Dict[str, _T]:
+        """
+        x0 of shape [..., D] XXX allow structured input
+        output of shape [..., num_timepoints, D]
+        """
+        timepoints = torch.rand(num_timepoints) * self.duration
+        time = timepoints.reshape(*[1]*(len(x0.shape)-1), -1, 1)
+        return self.noise_and_conditional_score(x0=x0, time=time)
+
 
 class ConstantTimeNoiseSchedule(ContinuousTimeNoiseSchedule):
 
     def __init__(self, noise_level: float, duration: float = 10.0) -> None:
-        super().__init__()
+        super().__init__(duration)
         self.noise_level = noise_level
         self.duration = duration
         
@@ -143,11 +153,10 @@ class ConstantTimeNoiseSchedule(ContinuousTimeNoiseSchedule):
 class LinearIncreaseNoiseSchedule(ContinuousTimeNoiseSchedule):
     
     def __init__(self, start_noise_level: float, end_noise_level: float, duration: float = 10.0) -> None:
-        super().__init__()
+        super().__init__(duration)
         self.start_noise_level = start_noise_level    # at time 0
         self.end_noise_level = end_noise_level  # at time 1
         self.slope = end_noise_level - start_noise_level
-        self.duration = duration
 
         smallest_scaling_factor = self.summarise_noising_factor()[1][-1]
         assert smallest_scaling_factor > 0.001, smallest_scaling_factor.item()
