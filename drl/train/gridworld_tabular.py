@@ -58,7 +58,7 @@ env = GridWorld(
 
 batch_size = 64
 remaining_terminations = 64 * 64 * 64
-gamma = 0.9
+gamma = 0.99
 lr = 0.001
 
 fig_path = '/homes/pr450/repos/research_projects/sampling_ddpm/drl/train'

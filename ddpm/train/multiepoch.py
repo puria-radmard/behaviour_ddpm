@@ -276,7 +276,22 @@ for t in tqdm(range(num_trials)):
         if t > plotting_start:
             axes[1, 4].plot(all_prep_state_losses[: t + 1 - plotting_start])
 
-        plt.savefig(os.path.join(save_base, "latest_log.png"))
+        fig.savefig(os.path.join(save_base, "latest_log.png"))
         plt.close("all")
 
         torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.mdl"))
+
+        if 'palimpsest' in task_name:
+
+            fig, axes = plt.subplots(4, 8, figsize = (20, 10))
+
+            stim_axes = axes[:,:4].flatten()
+            cue_axes = axes[:,4:].flatten()
+
+            for i_ax, (stax, cax) in enumerate(zip(stim_axes, cue_axes)):
+                stax.imshow(trial_information.prep_network_inputs[0][i_ax,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
+                cax.imshow(trial_information.prep_network_inputs[2][i_ax,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
+
+            fig.savefig(os.path.join(save_base, "palimpsest_reprs.png"))
+
+

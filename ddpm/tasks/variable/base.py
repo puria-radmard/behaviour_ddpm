@@ -27,13 +27,13 @@ from purias_utils.multiitem_working_memory.util.circle_utils import (
 
 
 
-def generate_stimulus_features(N_items: int, batch_size: int) -> Dict[str, _T]:
+def generate_stimulus_features(N_items: int, batch_size: int, excl_max_items: float) -> Dict[str, _T]:
     "all are [batch_size, num_items, 1/2]"
     all_probe_features, all_report_features = [], []
     for bs in range(batch_size):
-        all_probe_features.append(generate_circular_feature_list(N_items, torch.pi / 7.1))
+        all_probe_features.append(generate_circular_feature_list(N_items, torch.pi / excl_max_items))
         all_report_features.append(
-            generate_circular_feature_list(N_items, torch.pi / 7.1)
+            generate_circular_feature_list(N_items, torch.pi / excl_max_items)
         )
     all_probe_features = torch.tensor(all_probe_features)
     all_report_features = torch.tensor(all_report_features)
@@ -113,13 +113,14 @@ class StandardCartesianWMTaskVariableGenerator(TaskVariableGenerator, ABC):
 
     def __init__(self, num_items: int) -> None:
         self.num_items = num_items
+        self.min_sep = 2 * num_items + 0.1
 
     @abstractmethod
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
     def generate_variable_dict(self, batch_size: int) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items, batch_size)
+        ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep)
         probability_vector_task_variables = self.generate_probability_vectors(ret)
         ret.update(probability_vector_task_variables)
         return ret
@@ -263,7 +264,7 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         num_items: int,
         correct_probability: float,
         stimulus_exposure_duration: int,
-        pre_index_delay_duration: int,
+        pre_index_delay_duration: int | List[int],
         index_duration: int,
         post_index_delay_duration: int,
     ) -> None:
@@ -275,6 +276,17 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         self.correct_probability = correct_probability
         self.prep_epoch_durations = [stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration]
         self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
+
+    def generate_prep_epoch_durations(self):
+        res = []
+        for dur in self.prep_epoch_durations:
+            if isinstance(dur, int):
+                res.append(dur)
+            elif isinstance(dur, list):
+                res.append(random.randint(*dur))
+            else:
+                raise TypeError(dur)
+        return res
 
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         """
@@ -298,7 +310,7 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         return {
             "swap_probabilities": probability_vector,
             "cued_item_idx": selected_item,
-            "prep_epoch_durations": self.prep_epoch_durations,
+            "prep_epoch_durations": self.generate_prep_epoch_durations(),
             "diffusion_epoch_durations": self.diffusion_epoch_durations
         }
 
@@ -320,7 +332,7 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         num_items: int,
         swap_function_width: float,
         stimulus_exposure_duration: int,
-        pre_index_delay_duration: int,
+        pre_index_delay_duration: int | List[int],
         index_duration: int,
         post_index_delay_duration: int,
     ) -> None:
@@ -332,7 +344,17 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         self.prep_epoch_durations = [stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration]
         self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
 
-    
+    def generate_prep_epoch_durations(self):
+        res = []
+        for dur in self.prep_epoch_durations:
+            if isinstance(dur, int):
+                res.append(dur)
+            elif isinstance(dur, list):
+                res.append(random.randint(*dur))
+            else:
+                raise TypeError(dur)
+        return res
+
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         """
         selected_item of shape [batch]
@@ -357,6 +379,6 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         return {
             "swap_probabilities": probability_vector,
             "cued_item_idx": selected_item,
-            "prep_epoch_durations": self.prep_epoch_durations,
+            "prep_epoch_durations": self.generate_prep_epoch_durations(),
             "diffusion_epoch_durations": self.diffusion_epoch_durations
         }

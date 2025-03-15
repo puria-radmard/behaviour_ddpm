@@ -16,8 +16,8 @@ class PalimpsestRepresentation:
         self.probe_centers = torch.linspace(-torch.pi, +torch.pi, probe_num_tc + 1)[:-1]
         self.report_centers = torch.linspace(-torch.pi, +torch.pi, report_num_tc + 1)[:-1]
         self.probe_tuning_scales = torch.ones_like(self.probe_centers) * tuning_scale
-        self.div_norm = div_norm
         self.report_tuning_scales = torch.ones_like(self.report_centers) * tuning_scale
+        self.div_norm = div_norm
         self.total_size = probe_num_tc * report_num_tc
         self.probe_num_tc = probe_num_tc
         self.report_num_tc = report_num_tc

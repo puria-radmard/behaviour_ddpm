@@ -55,6 +55,43 @@ def delayed_probe_cue_vectoral_spike_and_slab(
     )
 
 
+
+def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
+    sample_size,
+    num_items,
+    correct_probability,
+    stimulus_exposure_duration,
+    pre_index_delay_duration,
+    index_duration,
+    post_index_delay_duration,
+    probe_num_tc,
+    report_num_tc,
+    probe_num_width,
+    report_num_width,
+    **sample_kwargs
+):
+    task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
+        num_items, correct_probability, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
+    )
+    sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(
+        num_items=num_items,
+        probe_num_tc=probe_num_tc,
+        report_num_tc=report_num_tc,
+        probe_num_width=probe_num_width,
+        report_num_width=report_num_width,
+    )
+    sample_gen = VectoralEmbeddedExampleSampleGenerator(
+        sample_size=sample_size, **sample_kwargs
+    )
+    return MultiEpochDiffusionTask(
+        task_variable_gen=task_variable_gen,
+        sensory_gen=sensory_gen,
+        sample_gen=sample_gen,
+    )
+
+
+
+
 def delayed_probe_cue_vectoral_with_swap_function(
     sample_size,
     num_items,
@@ -69,6 +106,40 @@ def delayed_probe_cue_vectoral_with_swap_function(
         num_items, swap_function_width, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
     )
     sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemory(num_items=num_items)
+    sample_gen = VectoralEmbeddedExampleSampleGenerator(
+        sample_size=sample_size, **sample_kwargs
+    )
+    return MultiEpochDiffusionTask(
+        task_variable_gen=task_variable_gen,
+        sensory_gen=sensory_gen,
+        sample_gen=sample_gen,
+    )
+
+
+def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
+    sample_size,
+    num_items,
+    swap_function_width,
+    stimulus_exposure_duration,
+    pre_index_delay_duration,
+    index_duration,
+    post_index_delay_duration,
+    probe_num_tc,
+    report_num_tc,
+    probe_num_width,
+    report_num_width,
+    **sample_kwargs
+):
+    task_variable_gen = ProbeDistanceProbabilityTaskVariableGenerator(
+        num_items, swap_function_width, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
+    )
+    sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(
+        num_items=num_items,
+        probe_num_tc=probe_num_tc,
+        report_num_tc=report_num_tc,
+        probe_num_width=probe_num_width,
+        report_num_width=report_num_width,
+    )
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
         sample_size=sample_size, **sample_kwargs
     )

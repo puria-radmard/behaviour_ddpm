@@ -4,6 +4,7 @@ from torch import Tensor as _T
 from abc import ABC, abstractmethod
 from typing import Dict, Set, List
 
+from purias_utils.multiitem_working_memory.util.circle_utils import rectify_angles
 
 class MultiEpochSensoryGenerator(ABC):
     """
@@ -109,3 +110,70 @@ class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
     def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["report_features_cart"].shape[0]
         return [torch.zeros(batch_size, self.num_items * 4 + 2)]
+
+
+
+class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSensoryGeneratorWithMemory):
+
+    def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, ) -> None:
+        super().__init__(num_items)
+
+        self.probe_num_tc = probe_num_tc
+        self.report_num_tc = report_num_tc
+
+        self.underlying_sensory_shape = [self.probe_num_tc * self.report_num_tc]
+        self.prep_sensory_shape = [self.underlying_sensory_shape] * 4
+        self.diffusion_sensory_shapes = [self.underlying_sensory_shape]
+
+        self.probe_centers = torch.linspace(-torch.pi, +torch.pi, probe_num_tc + 1)[:-1]
+        self.report_centers = torch.linspace(-torch.pi, +torch.pi, report_num_tc + 1)[:-1]
+        self.probe_tuning_scales = torch.ones_like(self.probe_centers) * probe_num_width
+        self.report_tuning_scales = torch.ones_like(self.report_centers) * report_num_width
+
+    @staticmethod
+    def generate_responses(features: _T, centers: _T, scales: _T, peak: float) ->_T:
+        """
+        features [B, N]
+        centers [D]
+        scales [D]
+
+        output of shape [B, N, D]
+
+        r_i(a) ~= peak * exp(cos(a - a_i) * scale) / exp(scale)
+        """
+        centers = centers[None,None]
+        scales = scales[None,None]
+        features = features[:,:,None]
+        scaled_diffs = rectify_angles(centers - features).cos() * scales
+        rescaled_diffs = scaled_diffs.exp() / scales.exp()
+        rescaled_diffs = rescaled_diffs * peak
+        return rescaled_diffs
+
+
+    def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
+
+        probe_repr = self.generate_responses(variable_dict["probe_features"], self.probe_centers, self.probe_tuning_scales, 1.0)        # [B, N, probe size]
+        report_repr = self.generate_responses(variable_dict["report_features"], self.report_centers, self.report_tuning_scales, 1.0)
+        
+        probe_repr = probe_repr.unsqueeze(-2)
+        report_repr = report_repr.unsqueeze(-1)
+        flat_report_repr = torch.ones_like(report_repr)
+        
+        joint_repr = (probe_repr * report_repr)  # [B, N, probe size, report size]
+        joint_resp = joint_repr.reshape(joint_repr.shape[0], self.num_items, -1)  # [B, total size]
+        joint_resp = joint_resp.sum(1)
+
+        cue_repr = (probe_repr * flat_report_repr)  # [B, N, probe size, report size]
+        cue_resp = cue_repr.reshape(cue_repr.shape[0], self.num_items, -1)  # [B, total size]
+        cue_resp = cue_resp[torch.arange(cue_resp.shape[0]),variable_dict["cued_item_idx"]]
+
+        empty = torch.zeros_like(cue_resp)
+        
+        # return [flattened_coords_with_empty, empty, chosen_probe_coords, empty]
+        return [joint_resp, empty, cue_resp, empty]
+
+
+    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
+        batch_size = variable_dict["report_features_cart"].shape[0]
+        return [torch.zeros(batch_size, self.probe_num_tc * self.report_num_tc)]
+

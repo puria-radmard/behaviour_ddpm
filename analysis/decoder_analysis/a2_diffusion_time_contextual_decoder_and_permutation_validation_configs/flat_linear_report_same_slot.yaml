@@ -1,0 +1,8 @@
+run_name: 'run_b2_probe_cued_with_probe_flat_swap_fewer_variable_delay_0'
+ctd_batch_size: 1024 
+num_opt_steps: 5000 
+decoding_variable: 'report_features_cart'
+context_variable: 'probe_features_cart'
+decoder_type: 'linear'
+save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/a2_diffusion_time_contextual_decoder_and_permutation_validation'
+random_choice: false

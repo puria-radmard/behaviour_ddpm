@@ -1,0 +1,52 @@
+# 20250227
+# Same as before but fewer items...
+
+# python -m ddpm.train.multiepoch ddpm/configs/further_capabilities/b3_probe_cued_with_probe_cyclical_swap_fewer.yaml
+
+
+# Model
+model_name: teacher_forced_delayed_probe_cue
+model_config:
+  recurrence_hidden_layers: [128]
+  time_embedding_size: 16
+  sample_ambient_dim: 128
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.1
+
+# Diffusion
+ultimate_sigma2: 0.20
+starting_sigma2: 0.20
+num_timesteps: 40     # Greatly decreased from last time too!
+
+# Training/logging
+logging_freq: 100
+batch_size: 32
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay"
+
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_0/state.mdl"
+
+# Task
+task_name: delayed_probe_cue_vectoral_with_swap_function
+task_config:
+
+  sample_size: 2
+  num_items: 2
+  swap_function_width: 1.0                      # Only difference to before!
+  residual_in_behaviour_plane_only: false
+  sample_radius: 2.5
+
+  # Like Mallett 2022, dt = 0.15
+  stimulus_exposure_duration: 10  # Increased from 5 to help encoding
+  pre_index_delay_duration: [15, 30]  # Decreased from 28 to help with memory
+  index_duration: 5
+  post_index_delay_duration: 1   # Decreased from 80 - now part of diffusion period! - see task!

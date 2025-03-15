@@ -93,7 +93,7 @@ class SequentialCausalInferenceTaskVariableGenerator(InitialisedSampleSpaceTaskV
         """
 
         # Generate pre-prep samples with exactly the same logic as in StandardCausalInferenceTaskVariableGenerator
-        initial_variables = generate_stimulus_features(2, batch_size)
+        initial_variables = generate_stimulus_features(2, batch_size, 7)
         initial_items_report_features_distance = rectify_angles(
             initial_variables["report_features"][:, 0] - initial_variables["report_features"][:, 1]
         )
@@ -118,7 +118,7 @@ class SequentialCausalInferenceTaskVariableGenerator(InitialisedSampleSpaceTaskV
             # regardless of whether the pre-prep samples are unimodal or bimodal, we can 
             # find the miniaml distance between the new variable and pre_prep_samples_dict['response_locations']
             # and reapply the same causal inference logic as above!
-        new_variable = generate_stimulus_features(1, batch_size)
+        new_variable = generate_stimulus_features(1, batch_size, 1.0)
         import pdb; pdb.set_trace()
 
         new_variable_distance = rectify_angles(new_variable - initial_items_locations).abs()

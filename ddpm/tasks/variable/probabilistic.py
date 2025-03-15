@@ -48,7 +48,7 @@ class StandardCausalInferenceTaskVariableGenerator(TaskVariableGenerator):
         Always have 0.5, 0.5 swap pmf
         Sometimes locations are at report features, sometimes they are both at the average location between the two
         """
-        ret = generate_stimulus_features(2, batch_size)
+        ret = generate_stimulus_features(2, batch_size, 7.1)
         report_features_distance = rectify_angles(
             ret["report_features"][:, 0] - ret["report_features"][:, 1]
         )
