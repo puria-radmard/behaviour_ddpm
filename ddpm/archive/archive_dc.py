@@ -96,7 +96,7 @@ class DoublyConditionedDDPMReverseProcess(DDPMReverseProcess):
 
         # [..., 1, dim x]
         x_0 = (y_samples @ self.behaviour_projection_matrix.T).unsqueeze(-2)
-        x_0 = x_0.repeat(*[1] * extra_dims, self.T, 1)
+        x_0 = x_0.expand(*[1] * extra_dims, self.T, 1)
         epsilon = torch.randn_like(x_0)
 
         # [..., T, dim x]

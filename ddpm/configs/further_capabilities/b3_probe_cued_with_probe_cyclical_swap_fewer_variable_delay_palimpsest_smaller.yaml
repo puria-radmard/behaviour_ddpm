@@ -30,10 +30,10 @@ logging_freq: 1000
 batch_size: 16
 num_samples: 1024
 num_trials: 10_000_000
-lr: 0.01
+lr: 0.001
 save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay_palimpsest_smaller"
 
-# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay_palimpsest_1/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay_palimpsest_smaller_0/state.mdl"
 
 # Task
 task_name: delayed_probe_cue_vectoral_with_swap_function_palimpsest

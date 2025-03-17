@@ -69,6 +69,7 @@ class DelayedIndexCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
 
 
 
+
 class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
     """
     Prep epoch 1: provide report and probe dimensions as cartestians, zero at end of input vector
@@ -115,13 +116,19 @@ class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
 
 class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSensoryGeneratorWithMemory):
 
-    def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, ) -> None:
+    def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, vectorise_input: bool = True) -> None:
         super().__init__(num_items)
 
         self.probe_num_tc = probe_num_tc
         self.report_num_tc = report_num_tc
 
-        self.underlying_sensory_shape = [self.probe_num_tc * self.report_num_tc]
+        self.vectorise_input = vectorise_input
+
+        if vectorise_input:
+            self.underlying_sensory_shape = [self.probe_num_tc * self.report_num_tc]
+        else:
+            self.underlying_sensory_shape = [self.probe_num_tc, self.report_num_tc]
+
         self.prep_sensory_shape = [self.underlying_sensory_shape] * 4
         self.diffusion_sensory_shapes = [self.underlying_sensory_shape]
 
@@ -160,20 +167,26 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
         flat_report_repr = torch.ones_like(report_repr)
         
         joint_repr = (probe_repr * report_repr)  # [B, N, probe size, report size]
-        joint_resp = joint_repr.reshape(joint_repr.shape[0], self.num_items, -1)  # [B, total size]
+        if self.vectorise_input:
+            joint_resp = joint_repr.reshape(joint_repr.shape[0], self.num_items, -1)  # [B, total size]
+        else:
+            joint_resp = joint_repr
         joint_resp = joint_resp.sum(1)
 
         cue_repr = (probe_repr * flat_report_repr)  # [B, N, probe size, report size]
-        cue_resp = cue_repr.reshape(cue_repr.shape[0], self.num_items, -1)  # [B, total size]
+        if self.vectorise_input:
+            cue_resp = cue_repr.reshape(cue_repr.shape[0], self.num_items, -1)  # [B, total size]
+        else:
+            cue_resp = cue_repr
         cue_resp = cue_resp[torch.arange(cue_resp.shape[0]),variable_dict["cued_item_idx"]]
 
         empty = torch.zeros_like(cue_resp)
-        
+
         # return [flattened_coords_with_empty, empty, chosen_probe_coords, empty]
         return [joint_resp, empty, cue_resp, empty]
 
 
     def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["report_features_cart"].shape[0]
-        return [torch.zeros(batch_size, self.probe_num_tc * self.report_num_tc)]
+        return [torch.zeros(batch_size, *self.underlying_sensory_shape)]
 

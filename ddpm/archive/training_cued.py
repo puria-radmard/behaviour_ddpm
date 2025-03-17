@@ -150,10 +150,10 @@ for t in tqdm(range(num_trials)):
                 num_classes=num_items,
             ),
             # training_sample_set['network_inputs'].to(device),
-            # training_sample_set['probe_clifford'].unsqueeze(0).repeat(batch_size, 1).to(device),
+            # training_sample_set['probe_clifford'].unsqueeze(0).expand(batch_size, 1).to(device),
             training_sample_set["report_clifford"]
             .unsqueeze(0)
-            .repeat(batch_size, 1)
+            .expand(batch_size, 1)
             .to(device),
         ],
         -1,

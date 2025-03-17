@@ -1,38 +1,7 @@
-import torch, sys, os
-
+from analysis.decoder_analysis.shared_setup import *
 from torch import Tensor as _T
 
-from analysis.decoder_analysis.decoders import *
 
-from tqdm import tqdm
-import numpy as np
-
-import matplotlib.cm as cmx
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-from purias_utils.util.arguments_yaml import ConfigNamepace
-
-from scipy.stats import ttest_rel
-
-from ddpm.utils.loading import generate_model_and_task_from_args_path_multiepoch
-
-
-analysis_args = ConfigNamepace.from_yaml_path(sys.argv[1])
-yaml_name = sys.argv[1].split('/')[-1].split('.')[0]
-
-
-# run_name = 'run_b2_probe_cued_with_probe_flat_swap_fewer_variable_delay_0'
-run_name = analysis_args.run_name
-
-device = 'cuda'
-_, task, ddpm_model, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/args.yaml', device)
-ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/state.mdl'))
-
-ddpm_model.eval()
-
-num_neurons = ddpm_model.sample_ambient_dim
 recall_epoch_duration = ddpm_model.sigma2xt_schedule.shape[0]
 fixed_delay_duration = 20   # XXX remove hard coding!
 
@@ -107,7 +76,7 @@ for i in tqdm(range(num_opt_steps)):
         all_items = all_items[((novel_samples_dict['samples'] - trial_information.task_variable_information['report_features_cart']).square().sum(-1).argmax(-1) == decoding_positions)]
         decoding_positions = decoding_positions[all_items]
         diffusion_time_activity = diffusion_time_activity[all_items]
-        print(len(all_items))
+        print(len(all_items) / ctd_batch_size)
 
     target = trial_information.task_variable_information[decoding_variable][all_items,decoding_positions].cuda().unsqueeze(1)
     output = decoder.decode_sequence(diffusion_time_activity)

@@ -38,7 +38,7 @@ def embed_2D_items_in_clifford(
     embedded_mean = radius * (
         probe_clifford @ torus_directions["probe_directions"]
     ) + radius * (report_clifford @ torus_directions["report_directions"])
-    repeated_embedded_mean = embedded_mean.unsqueeze(0).repeat(n_samples, 1)
+    repeated_embedded_mean = embedded_mean.unsqueeze(0).expand(n_samples, 1)
     base_samples = repeated_embedded_mean + torch.randn_like(repeated_embedded_mean)
 
     # Evenly split the cued item between samples

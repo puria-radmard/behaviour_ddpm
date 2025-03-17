@@ -12,11 +12,14 @@ def delayed_indexing_cue_fixed_probability_vectoral(
     num_items,
     correct_probability,
     stimulus_exposure_duration,
+    pre_index_delay_duration,
     index_duration,
+    post_index_delay_duration,
     **sample_kwargs
 ):
     task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
-        num_items, correct_probability, stimulus_exposure_duration, index_duration
+        num_items, correct_probability, stimulus_exposure_duration, 
+        pre_index_delay_duration, index_duration, post_index_delay_duration
     )
     sensory_gen = DelayedIndexCuingSensoryGeneratorWithMemory(num_items=num_items)
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
@@ -68,6 +71,7 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
     report_num_tc,
     probe_num_width,
     report_num_width,
+    vectorise_input: bool = True,
     **sample_kwargs
 ):
     task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
@@ -79,6 +83,7 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
         report_num_tc=report_num_tc,
         probe_num_width=probe_num_width,
         report_num_width=report_num_width,
+        vectorise_input=vectorise_input,
     )
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
         sample_size=sample_size, **sample_kwargs
@@ -128,6 +133,7 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
     report_num_tc,
     probe_num_width,
     report_num_width,
+    vectorise_input: bool = True,
     **sample_kwargs
 ):
     task_variable_gen = ProbeDistanceProbabilityTaskVariableGenerator(
@@ -139,6 +145,7 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
         report_num_tc=report_num_tc,
         probe_num_width=probe_num_width,
         report_num_width=report_num_width,
+        vectorise_input=vectorise_input,
     )
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
         sample_size=sample_size, **sample_kwargs

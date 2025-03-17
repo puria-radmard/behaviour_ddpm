@@ -5,7 +5,7 @@ from torch import nn
 from torch import vmap
 from torch import Tensor as _T
 
-from typing import List
+from typing import List, Mapping, Any
 
 
 from ddpm.model.unet import UNet
@@ -54,8 +54,8 @@ class VectoralResidualModel(nn.Module):
 
     @staticmethod
     def unsqueeze_start_dims(tensor: _T, start_dims: List[int]):
-        return tensor[*[None for _ in start_dims]].repeat(
-            *start_dims, *[1 for _ in tensor.shape]
+        return tensor[*[None for _ in start_dims]].expand(
+            *start_dims, *tensor.shape
         )
 
     def concatenate_with_time_and_input(
@@ -135,7 +135,7 @@ class UNetResidualModel(nn.Module):
         input_vector of shape [B, T, input_size]
         """
         raise Exception("Make start dims general again!")
-        reshaped_t_schedule = t_embeddings_schedule.unsqueeze(0).repeat(
+        reshaped_t_schedule = t_embeddings_schedule.unsqueeze(0).expand(
             x.shape[0], 1, 1
         )
         total_input_vector = reshaped_t_schedule  # torch.concat([input_vector, reshaped_t_schedule], -1).float()

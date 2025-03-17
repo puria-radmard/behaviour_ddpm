@@ -104,8 +104,17 @@ mse_key: str
 assert mse_key == "epsilon_hat"
 
 if resume_path is not None:
-    ddpm_model.load_state_dict(torch.load(resume_path))
     task.load_metadata(resume_path.replace('state.mdl', 'task_metadata.npy'))
+    trained_state_dict = torch.load(resume_path)
+    if args.resume_kept_input_dims is not None:
+        ddpm_model.load_state_dict(trained_state_dict, kept_input_dims=args.resume_kept_input_dims)
+    else:
+        try:
+            ddpm_model.load_state_dict(trained_state_dict)
+        except AssertionError as e:
+            print(e)
+            print('warning: loading state_dict non-strictly')
+            ddpm_model.load_state_dict(trained_state_dict, strict = False)
 
 
 # Set up training

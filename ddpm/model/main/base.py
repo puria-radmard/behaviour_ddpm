@@ -14,6 +14,8 @@ from ddpm.model.input import InputModelBlock
 
 from ddpm.tasks.distribution import DistributionInformation
 
+from typing import List, Mapping, Any
+
 
 class DDPMReverseProcessBase(nn.Module, ABC):
     """
@@ -184,6 +186,35 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         """
         raise NotImplementedError
 
+    def load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False, *_, kept_input_dims: Optional[List[int]] = None):
+        try:
+            ret = super().load_state_dict(state_dict, strict, assign)
+            if kept_input_dims is not None:
+                print("warning: used kept_input_dims in DDPMReverseProcessBase.load_state_dict even though state dict fit fine")
+            return ret
+
+        except RuntimeError as e:
+            assert not assign
+            assert strict
+            assert kept_input_dims is not None
+            print(e)
+            print("Trying again without input weights!")
+            own_state = self.state_dict()
+            for name, param in state_dict.items():
+                if name == 'residual_model.layers.0.weight':
+                    num_rec_and_time_inds = self.residual_model.state_space_size + self.time_embeddings.time_embedding_dim
+                    inputs_dim = [ki + num_rec_and_time_inds for ki in kept_input_dims]
+                    required_dims = list(range(num_rec_and_time_inds)) + inputs_dim
+                    copyable_param = param.data[:,required_dims]
+                else:
+                    copyable_param = param.data
+                try:
+                    own_state[name].copy_(copyable_param)
+                except RuntimeError as e2:
+                    print(e2)
+                    print("Copying weight in with random input weights!")
+                    own_state[name][:,:len(required_dims)] = copyable_param
+
 
 class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
     """
@@ -205,8 +236,9 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
         ), f"Expected samples that end with shape {self.sample_shape}, got samples of shape {x_0.shape}"
 
         num_extra_dim = len(x_0.shape) - len(self.sample_shape)
-        x_0 = x_0.unsqueeze(num_extra_dim).repeat(
-            *[1] * num_extra_dim, self.T, *[1] * len(self.sample_shape)
+        x_0 = x_0.unsqueeze(num_extra_dim).expand(
+            *x_0.shape[:num_extra_dim], self.T, *self.sample_shape
+            # *[1] * num_extra_dim, self.T, *[1] * len(self.sample_shape)
         )
         epsilon = torch.randn_like(x_0)
 
