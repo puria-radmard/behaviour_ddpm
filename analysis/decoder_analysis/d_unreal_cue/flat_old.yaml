@@ -1,0 +1,4 @@
+run_name: 'run_b2_probe_cued_with_probe_flat_swap_fewer_variable_delay_0'
+num_cue_gridpoints: 50
+num_samples: 1024
+save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/d_unreal_cue'

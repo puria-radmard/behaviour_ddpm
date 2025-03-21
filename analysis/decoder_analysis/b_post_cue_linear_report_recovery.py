@@ -3,7 +3,7 @@ from torch import Tensor as _T
 
 
 recall_epoch_duration = ddpm_model.sigma2xt_schedule.shape[0]
-fixed_delay_duration = 20   # XXX remove hard coding!
+fixed_delay_duration = 5   # XXX remove hard coding!
 
 decode_cued = analysis_args.decode_cued
 limit_to_further = analysis_args.limit_to_further
@@ -72,6 +72,8 @@ for i in tqdm(range(num_opt_steps)):
         decoding_positions = 1 - cued_idxes
 
     all_items = torch.arange(ctd_batch_size)
+
+    # raise Exception('Do exclusion here!')
     if limit_to_further:
         all_items = all_items[((novel_samples_dict['samples'] - trial_information.task_variable_information['report_features_cart']).square().sum(-1).argmax(-1) == decoding_positions)]
         decoding_positions = decoding_positions[all_items]

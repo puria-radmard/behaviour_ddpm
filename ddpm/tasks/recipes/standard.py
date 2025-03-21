@@ -72,6 +72,55 @@ def indexing_cue_vectoral(sample_size, n_items, **sample_kwargs):
 
 
 
+def probe_cue_vectoral_spike_and_slab(
+    sample_size,
+    num_items,
+    correct_probability,
+    stimulus_exposure_duration,
+    pre_index_delay_duration,
+    index_duration,
+    post_index_delay_duration,
+    **sample_kwargs
+):
+    task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
+        num_items, correct_probability, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
+    )
+    sensory_gen = ProbeCuingSensoryGenerator(num_items=num_items)
+    sample_gen = VectoralEmbeddedExampleSampleGenerator(
+        sample_size=sample_size, **sample_kwargs
+    )
+    return DiffusionTask(
+        task_variable_gen=task_variable_gen,
+        sensory_gen=sensory_gen,
+        sample_gen=sample_gen,
+    )
+
+
+def index_cue_vectoral_spike_and_slab(
+    sample_size,
+    num_items,
+    correct_probability,
+    stimulus_exposure_duration,
+    pre_index_delay_duration,
+    index_duration,
+    post_index_delay_duration,
+    **sample_kwargs
+):
+    task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
+        num_items, correct_probability, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
+    )
+    sensory_gen = IndexCuingSensoryGenerator(num_items=num_items)
+    sample_gen = VectoralEmbeddedExampleSampleGenerator(
+        sample_size=sample_size, **sample_kwargs
+    )
+    return DiffusionTask(
+        task_variable_gen=task_variable_gen,
+        sensory_gen=sensory_gen,
+        sample_gen=sample_gen,
+    )
+
+
+
 def standard_fixed_probability_vectoral_strip_image_in(
     image_size: int, strip_pixel_width: int, pmf: List[float]
 ):

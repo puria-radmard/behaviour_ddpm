@@ -6,7 +6,10 @@ from torch import Tensor as _T
 from ddpm.model.residual import VectoralResidualModel
 from ddpm.model.input import InputModelBlock
 
-from ddpm.model.main.base import PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
+from ddpm.model.main.base import (
+    PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+    PreparatoryRNNBaselineDDPMReverseProcess,
+)
 
 
 class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
@@ -20,6 +23,7 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
 
     def __init__(
         self,
+        *_,
         seperate_output_neurons: bool,
         stabilise_nullspace: bool,
         sample_ambient_dim: int,
@@ -29,19 +33,22 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         input_model: InputModelBlock,
         time_embedding_size: int,
         device="cuda",
+        **kwargs
     ) -> None:
+
         super().__init__(
-            None,
-            None,
-            seperate_output_neurons,
-            stabilise_nullspace,
-            sample_ambient_dim,
-            sample_shape,
-            sigma2xt_schedule,
-            residual_model,
-            input_model,
-            time_embedding_size,
-            device,
+            num_prep_steps = None,
+            network_input_during_diffusion = None,
+            seperate_output_neurons = seperate_output_neurons,
+            stabilise_nullspace = stabilise_nullspace,
+            sample_ambient_dim = sample_ambient_dim,
+            sample_shape = sample_shape,
+            sigma2xt_schedule = sigma2xt_schedule,
+            residual_model = residual_model,
+            input_model = input_model,
+            time_embedding_size = time_embedding_size,
+            device = device,
+            **kwargs
         )
 
         # Just to be sure
@@ -56,12 +63,15 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         prep_epoch_durations: List[int],
         diffusion_epoch_durations: List[Optional[int]],
         kwargs_for_residual_model={},
-        override_initial_state: Optional[_T] = None
+        override_initial_state: Optional[_T] = None,
     ) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
         assert len(prep_network_inputs) == len(prep_epoch_durations)
         all_prep_dicts = [
             self.prepare(
-                prep_network_inputs[0], x_samples.shape[:-2], prep_epoch_durations[0], override_initial_state=override_initial_state
+                prep_network_inputs[0],
+                x_samples.shape[:-2],
+                prep_epoch_durations[0],
+                override_initial_state=override_initial_state,
             )
         ]
         for pni, ped in zip(prep_network_inputs[1:], prep_epoch_durations[1:]):
@@ -85,9 +95,12 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
             )
             return all_prep_dicts, residual_dict
         else:
-            assert sum(diffusion_epoch_durations) == self.T, \
-                "Tasks with multiple diffusion epochs need to have sum(diffusion_epoch_durations) == self.T"
-            raise NotImplementedError('Multiple diffusion epochs generation not sorted out yet!')
+            assert (
+                sum(diffusion_epoch_durations) == self.T
+            ), "Tasks with multiple diffusion epochs need to have sum(diffusion_epoch_durations) == self.T"
+            raise NotImplementedError(
+                "Multiple diffusion epochs generation not sorted out yet!"
+            )
 
     def generate_samples(
         self,
@@ -104,7 +117,12 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
     ) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
         assert len(prep_network_inputs) == len(prep_epoch_durations)
         all_prep_dicts = [
-            self.prepare(prep_network_inputs[0], samples_shape, prep_epoch_durations[0], override_initial_state = override_initial_state)
+            self.prepare(
+                prep_network_inputs[0],
+                samples_shape,
+                prep_epoch_durations[0],
+                override_initial_state=override_initial_state,
+            )
         ]
         for pni, ped in zip(prep_network_inputs[1:], prep_epoch_durations[1:]):
             all_prep_dicts.append(
@@ -131,9 +149,46 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
             )
             return all_prep_dicts, samples_dict
         else:
-            assert (end_t_idx == None) and sum(diffusion_epoch_durations) == self.T, \
-                "Tasks with multiple diffusion epochs need to have sum(diffusion_epoch_durations) == self.T. You also cannot override end_t_idx = None during generation"
-            raise NotImplementedError('Multiple diffusion epochs generation not sorted out yet!')
+            assert (end_t_idx == None) and sum(
+                diffusion_epoch_durations
+            ) == self.T, "Tasks with multiple diffusion epochs need to have sum(diffusion_epoch_durations) == self.T. You also cannot override end_t_idx = None during generation"
+            raise NotImplementedError(
+                "Multiple diffusion epochs generation not sorted out yet!"
+            )
+
+
+class MultiPreparatoryRNNBaselineDDPMReverseProcess(
+    MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+    PreparatoryRNNBaselineDDPMReverseProcess,
+):
+    def __init__(
+        self,
+        use_leaky: bool,
+        seperate_output_neurons: bool,
+        stabilise_nullspace: bool,
+        sample_ambient_dim: int,
+        sample_shape: List[int],
+        sigma2xt_schedule: _T,
+        residual_model: VectoralResidualModel,
+        input_model: InputModelBlock,
+        time_embedding_size: int,
+        device="cuda",
+    ) -> None:
+
+        super().__init__(
+            # num_prep_steps = None,
+            # network_input_during_diffusion = None,
+            use_leaky = use_leaky,
+            seperate_output_neurons = seperate_output_neurons,
+            stabilise_nullspace = stabilise_nullspace,
+            sample_ambient_dim = sample_ambient_dim,
+            sample_shape = sample_shape,
+            sigma2xt_schedule = sigma2xt_schedule,
+            residual_model = residual_model,
+            input_model = input_model,
+            time_embedding_size = time_embedding_size,
+            device = device,
+        )
 
 
 class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
@@ -148,8 +203,29 @@ class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReversePro
     Desired pattern is given in MultiepochTrialInformation.pre_prep_sample_information
     """
 
-    def __init__(self, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, device="cuda") -> None:
-        super().__init__(seperate_output_neurons, stabilise_nullspace, sample_ambient_dim, sample_shape, sigma2xt_schedule, residual_model, input_model, time_embedding_size, device)
+    def __init__(
+        self,
+        seperate_output_neurons: bool,
+        stabilise_nullspace: bool,
+        sample_ambient_dim: int,
+        sample_shape: List[int],
+        sigma2xt_schedule: _T,
+        residual_model: VectoralResidualModel,
+        input_model: InputModelBlock,
+        time_embedding_size: int,
+        device="cuda",
+    ) -> None:
+        super().__init__(
+            seperate_output_neurons,
+            stabilise_nullspace,
+            sample_ambient_dim,
+            sample_shape,
+            sigma2xt_schedule,
+            residual_model,
+            input_model,
+            time_embedding_size,
+            device,
+        )
 
     def random_state_from_samples(self, pre_prep_samples: _T) -> _T:
         import pdb; pdb.set_trace()
@@ -169,9 +245,7 @@ class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReversePro
             * self.base_std
         )  # [..., 1, D]
 
-        embedded_samples = (
-            pre_prep_samples @ self.auxiliary_embedding_matrix
-        )
+        embedded_samples = pre_prep_samples @ self.auxiliary_embedding_matrix
 
         sample_removed_initial_state = initial_state - (
             initial_state @ self.sample_subspace_accessor
@@ -181,10 +255,50 @@ class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReversePro
 
         return sample_injected_initial_state
 
-    def residual(self, x_samples: _T, prep_network_inputs: List[_T], diffusion_network_inputs: List[_T], prep_epoch_durations: List[int], diffusion_epoch_durations: List[Optional[int]], pre_prep_samples: _T, kwargs_for_residual_model={}) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
+    def residual(
+        self,
+        x_samples: _T,
+        prep_network_inputs: List[_T],
+        diffusion_network_inputs: List[_T],
+        prep_epoch_durations: List[int],
+        diffusion_epoch_durations: List[Optional[int]],
+        pre_prep_samples: _T,
+        kwargs_for_residual_model={},
+    ) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
         override_initial_state = self.random_state_from_samples(pre_prep_samples)
-        return super().residual(x_samples, prep_network_inputs, diffusion_network_inputs, prep_epoch_durations, diffusion_epoch_durations, kwargs_for_residual_model, override_initial_state)
+        return super().residual(
+            x_samples,
+            prep_network_inputs,
+            diffusion_network_inputs,
+            prep_epoch_durations,
+            diffusion_epoch_durations,
+            kwargs_for_residual_model,
+            override_initial_state,
+        )
 
-    def generate_samples(self, *_, prep_network_inputs: List[_T], diffusion_network_inputs: List[_T], prep_epoch_durations: List[int], diffusion_epoch_durations: List[Optional[int]], samples_shape: List[int], pre_prep_samples: _T, noise_scaler: float = 1, kwargs_for_residual_model={}, end_t_idx=None) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
+    def generate_samples(
+        self,
+        *_,
+        prep_network_inputs: List[_T],
+        diffusion_network_inputs: List[_T],
+        prep_epoch_durations: List[int],
+        diffusion_epoch_durations: List[Optional[int]],
+        samples_shape: List[int],
+        pre_prep_samples: _T,
+        noise_scaler: float = 1,
+        kwargs_for_residual_model={},
+        end_t_idx=None
+    ) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
         override_initial_state = self.random_state_from_samples(pre_prep_samples)
-        return super().generate_samples(*_, prep_network_inputs=prep_network_inputs, diffusion_network_inputs=diffusion_network_inputs, prep_epoch_durations=prep_epoch_durations, diffusion_epoch_durations=diffusion_epoch_durations, samples_shape=samples_shape, noise_scaler=noise_scaler, kwargs_for_residual_model=kwargs_for_residual_model, end_t_idx=end_t_idx, override_initial_state=override_initial_state)
+        return super().generate_samples(
+            *_,
+            prep_network_inputs=prep_network_inputs,
+            diffusion_network_inputs=diffusion_network_inputs,
+            prep_epoch_durations=prep_epoch_durations,
+            diffusion_epoch_durations=diffusion_epoch_durations,
+            samples_shape=samples_shape,
+            noise_scaler=noise_scaler,
+            kwargs_for_residual_model=kwargs_for_residual_model,
+            end_t_idx=end_t_idx,
+            override_initial_state=override_initial_state,
+        )

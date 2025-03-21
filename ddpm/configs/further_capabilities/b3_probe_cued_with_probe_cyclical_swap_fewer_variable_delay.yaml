@@ -33,7 +33,8 @@ num_trials: 10_000_000
 lr: 0.001
 save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay"
 
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_0/state.mdl"
+resume_path: 'results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay_0/state.mdl'
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/run_b3_probe_cued_with_probe_cyclical_swap_fewer_0/state.mdl"
 
 # Task
 task_name: delayed_probe_cue_vectoral_with_swap_function

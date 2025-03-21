@@ -1,0 +1,63 @@
+# 20250227
+# Same as before but fewer items...
+
+# python -m ddpm.train.multiepoch ddpm/configs/further_capabilities/b3_probe_cued_with_probe_cyclical_swap_fewer.yaml
+
+
+# Model
+model_name: rnn_baseline_delayed_probe_cue_factorised_palimpsest_representation
+model_config:
+  recurrence_hidden_layers: [50]
+  time_embedding_size: 16
+  sample_ambient_dim: 50
+  feature_projection_sizes: [6, 6]  # network input size is 36
+  residual_model_kwargs:
+    nonlin_first: true
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+    use_leaky: false
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.01
+
+
+# Diffusion -- changed also!
+ultimate_sigma2: 0.30
+starting_sigma2: 0.30
+num_timesteps: 20       # Requires long attractors!
+
+
+# Training/logging
+logging_freq: 1000
+batch_size: 16
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e2_probe_cued_factorised_palimpsest_rnn_baseline_long_diff_and_del"
+
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e_probe_cued_factorised_palimpsest_rnn_baseline_0/state.mdl"
+
+
+# Task
+task_name: delayed_probe_cue_vectoral_spike_and_slab_palimpsest
+task_config:
+
+  probe_num_tc: 16
+  report_num_tc: 16
+  probe_num_width: 5.0
+  report_num_width: 5.0
+
+  vectorise_input: false
+
+  sample_size: 2
+  num_items: 2  # Less than Mallett
+  correct_probability: 1.0
+  residual_in_behaviour_plane_only: false
+  sample_radius: 2.5
+  
+  # Like Mallett 2022, dt = 0.15
+  stimulus_exposure_duration: 6  # Increased from 5 to help encoding
+  pre_index_delay_duration: [15, 15]  # Decreased from 28 to help with memory
+  index_duration: 5
+  post_index_delay_duration: 3  # XXX For the RNN BASELINE    # Decreased from 80 - now part of diffusion period! - see task!

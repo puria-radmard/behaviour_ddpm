@@ -5,6 +5,7 @@ Specifically for usage with MultiPreparatoryLinearSubspaceTeacherForcedDDPMRever
 
 import os
 import sys
+import copy
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -101,7 +102,7 @@ ddpm_model, mse_key = getattr(model, model_name)(
 ddpm_model: MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
 ddpm_model.to(device)
 mse_key: str
-assert mse_key == "epsilon_hat"
+# assert mse_key == "epsilon_hat"
 
 if resume_path is not None:
     task.load_metadata(resume_path.replace('state.mdl', 'task_metadata.npy'))
@@ -162,15 +163,18 @@ plotting_start = 0
 
 for t in tqdm(range(num_trials)):
 
+    prev_state = copy.deepcopy(ddpm_model.state_dict())
+
     timer.loop_start()
 
     trial_information = task.generate_trial_information(
         batch_size=batch_size, num_samples=num_samples
     )
 
-    forward_process = ddpm_model.noise(
-        x_0=trial_information.sample_information.sample_set.to(device).float()
-    )
+    with torch.no_grad():
+        forward_process = ddpm_model.noise(
+            x_0=trial_information.sample_information.sample_set.to(device).float()
+        )
     preparatory_state_dicts, epsilon_hat_dict = ddpm_model.residual(
         x_samples=forward_process["x_t"],
         prep_network_inputs=trial_information.prep_network_inputs,
@@ -194,6 +198,10 @@ for t in tqdm(range(num_trials)):
     )  # [B,S,2] -> mean over samples [B,2] -> mag of mean [B] -> average of that <scalar>
     total_loss = total_loss + (regularise_prep_state_weight * prep_state_loss)
 
+    if total_loss.isnan() or total_loss.isinf():
+        torch.save(prev_state, os.path.join(save_base, f"state_saved.mdl"))
+        raise Exception(f'Total_loss goes to NaN or inf. {os.path.join(save_base, f"state_saved.mdl")} has latest safe state dict')
+
     optim.zero_grad()
     total_loss.backward()
     optim.step()
@@ -206,21 +214,28 @@ for t in tqdm(range(num_trials)):
 
     if (t - plotting_offset) % logging_freq == 0:
 
+        test_trial_information = task.generate_trial_information(
+            batch_size=1, num_samples=500
+        )
+
         with torch.no_grad():
+            test_forward_process = ddpm_model.noise(
+                x_0=test_trial_information.sample_information.sample_set.to(device).float()
+            )
             novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
                 prep_network_inputs=[
-                    pni[[0]] for pni in trial_information.prep_network_inputs
+                    pni[[0]] for pni in test_trial_information.prep_network_inputs
                 ],
                 diffusion_network_inputs=[
-                    dni[[0]] for dni in trial_information.diffusion_network_inputs
+                    dni[[0]] for dni in test_trial_information.diffusion_network_inputs
                 ],
-                prep_epoch_durations=trial_information.prep_epoch_durations,
-                diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
-                samples_shape=[1, num_samples],
+                prep_epoch_durations=test_trial_information.prep_epoch_durations,
+                diffusion_epoch_durations=test_trial_information.diffusion_epoch_durations,
+                samples_shape=[1, 500],
                 noise_scaler=1.0,
             )
 
-        fig, axes = plt.subplots(2, 5, figsize=(25, 10))
+        fig, axes = plt.subplots(3, 5, figsize=(25, 15))
 
         axes[0, 0].set_title("Real sample(s)")
         axes[0, 1].set_title("Generated sample(s)")
@@ -231,7 +246,7 @@ for t in tqdm(range(num_trials)):
         axes[0, 4].set_title("$\hat\epsilon$ during generation")
 
         task.sample_gen.display_samples(
-            trial_information.sample_information, axes[0, 0]
+            test_trial_information.sample_information, axes[0, 0]
         )
         task.sample_gen.display_samples(novel_samples_dict["samples"], axes[0, 1])
         task.sample_gen.display_early_x0_pred_timeseries(
@@ -242,7 +257,7 @@ for t in tqdm(range(num_trials)):
             axes[0, 3],
         )
         task.sample_gen.display_samples(
-            forward_process["x_t"][:, :, -1, ...], axes[0, 3]
+            test_forward_process["x_t"][:, :, -1, ...], axes[0, 3]
         )
         task.sample_gen.display_early_x0_pred_timeseries(
             novel_samples_dict["epsilon_hat"].detach().cpu(),
@@ -251,7 +266,7 @@ for t in tqdm(range(num_trials)):
         )
 
         task.task_variable_gen.display_task_variables(
-            trial_information.task_variable_information, axes[1, 0], axes[1, 1]
+            test_trial_information.task_variable_information, axes[1, 0], axes[1, 1]
         )
 
         symmetrize_and_square_axis(axes[0, 0])
@@ -264,14 +279,19 @@ for t in tqdm(range(num_trials)):
         # axes[1,1].set_title('Individual timesteps MSE (zoomed in)')
         axes[1, 3].set_title("MSE averaged over timesteps")
         if t > plotting_start:
+            zoomed_start = int((t + 1 - plotting_start) / 3)
             for h, trace in enumerate(
                 all_individual_residual_mses[: t + 1 - plotting_start].T
             ):
                 color = kl_colors_scalarMap.to_rgba(h + 1)
                 axes[1, 2].plot(trace, color=color)
+                axes[2, 2].plot(trace[zoomed_start:], color=color)
                 # axes[1,1].plot(trace[-int(2 * (t+1-plotting_start) / 3):], color = color)
             axes[1, 3].plot(
                 all_individual_residual_mses[: t + 1 - plotting_start].mean(-1)
+            )
+            axes[2, 3].plot(
+                all_individual_residual_mses[zoomed_start : t + 1 - plotting_start].mean(-1)
             )
         cax = inset_axes(axes[1, 0], width="30%", height=1.0, loc=3)
         plt.colorbar(
@@ -292,14 +312,10 @@ for t in tqdm(range(num_trials)):
 
         if 'palimpsest' in task_name:
 
-            fig, axes = plt.subplots(4, 8, figsize = (20, 10))
+            fig, (stax, cax) = plt.subplots(1, 2, figsize = (10, 5))
 
-            stim_axes = axes[:,:4].flatten()
-            cue_axes = axes[:,4:].flatten()
-
-            for i_ax, (stax, cax) in enumerate(zip(stim_axes, cue_axes)):
-                stax.imshow(trial_information.prep_network_inputs[0][i_ax,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
-                cax.imshow(trial_information.prep_network_inputs[2][i_ax,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
+            stax.imshow(test_trial_information.prep_network_inputs[0][0,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
+            cax.imshow(test_trial_information.prep_network_inputs[2][0,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
 
             fig.savefig(os.path.join(save_base, "palimpsest_reprs.png"))
 

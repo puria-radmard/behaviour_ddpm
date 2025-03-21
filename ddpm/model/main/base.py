@@ -111,7 +111,9 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         self.a_t_schedule = self.a_t_schedule.to(*args, **kwargs)
         self.reshaped_a_t_schedule = self.reshaped_a_t_schedule.to(*args, **kwargs)
         self.root_b_t_schedule = self.root_b_t_schedule.to(*args, **kwargs)
-        self.reshaped_root_b_t_schedule = self.reshaped_root_b_t_schedule.to(*args, **kwargs)
+        self.reshaped_root_b_t_schedule = self.reshaped_root_b_t_schedule.to(
+            *args, **kwargs
+        )
         # self.mse_scaler_schedule = self.mse_scaler_schedule.to(*args, **kwargs)
         self.noise_scaler_schedule = self.noise_scaler_schedule.to(*args, **kwargs)
         return super(DDPMReverseProcessBase, self).to(*args, **kwargs)
@@ -186,11 +188,20 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         """
         raise NotImplementedError
 
-    def load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False, *_, kept_input_dims: Optional[List[int]] = None):
+    def load_state_dict(
+        self,
+        state_dict: Mapping[str, Any],
+        strict: bool = True,
+        assign: bool = False,
+        *_,
+        kept_input_dims: Optional[List[int]] = None,
+    ):
         try:
             ret = super().load_state_dict(state_dict, strict, assign)
             if kept_input_dims is not None:
-                print("warning: used kept_input_dims in DDPMReverseProcessBase.load_state_dict even though state dict fit fine")
+                print(
+                    "warning: used kept_input_dims in DDPMReverseProcessBase.load_state_dict even though state dict fit fine"
+                )
             return ret
 
         except RuntimeError as e:
@@ -201,11 +212,14 @@ class DDPMReverseProcessBase(nn.Module, ABC):
             print("Trying again without input weights!")
             own_state = self.state_dict()
             for name, param in state_dict.items():
-                if name == 'residual_model.layers.0.weight':
-                    num_rec_and_time_inds = self.residual_model.state_space_size + self.time_embeddings.time_embedding_dim
+                if name == "residual_model.layers.0.weight":
+                    num_rec_and_time_inds = (
+                        self.residual_model.state_space_size
+                        + self.time_embeddings.time_embedding_dim
+                    )
                     inputs_dim = [ki + num_rec_and_time_inds for ki in kept_input_dims]
                     required_dims = list(range(num_rec_and_time_inds)) + inputs_dim
-                    copyable_param = param.data[:,required_dims]
+                    copyable_param = param.data[:, required_dims]
                 else:
                     copyable_param = param.data
                 try:
@@ -213,7 +227,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
                 except RuntimeError as e2:
                     print(e2)
                     print("Copying weight in with random input weights!")
-                    own_state[name][:,:len(required_dims)] = copyable_param
+                    own_state[name][:, : len(required_dims)] = copyable_param
 
 
 class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
@@ -237,7 +251,9 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
 
         num_extra_dim = len(x_0.shape) - len(self.sample_shape)
         x_0 = x_0.unsqueeze(num_extra_dim).expand(
-            *x_0.shape[:num_extra_dim], self.T, *self.sample_shape
+            *x_0.shape[:num_extra_dim],
+            self.T,
+            *self.sample_shape,
             # *[1] * num_extra_dim, self.T, *[1] * len(self.sample_shape)
         )
         epsilon = torch.randn_like(x_0)
@@ -355,9 +371,12 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
             sample_trajectory.append(base_samples.detach().cpu())
             early_x0_preds.append(early_x0_pred.detach().cpu())
 
-
-        sample_trajectory = torch.concat(sample_trajectory, len(samples_shape))  # [..., T, <shape x>]
-        early_x0_preds = torch.concat(early_x0_preds, len(samples_shape))  # [..., T, <shape x>]
+        sample_trajectory = torch.concat(
+            sample_trajectory, len(samples_shape)
+        )  # [..., T, <shape x>]
+        early_x0_preds = torch.concat(
+            early_x0_preds, len(samples_shape)
+        )  # [..., T, <shape x>]
 
         return {
             "sample_trajectory": sample_trajectory,
@@ -696,11 +715,11 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
         embedded_sample_trajectory = []
         early_x0_preds = []
         all_predicted_residual = []
-        
+
         for t_idx in range(start_t_idx, end_t_idx + 1):
 
             t_embedding = t_embeddings[-t_idx][None]
-            
+
             predicted_residual = self.residual_model(
                 base_samples, t_embedding, input_vectors[..., [-t_idx], :]
             )
@@ -769,6 +788,7 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
 
     def __init__(
         self,
+        *_,
         seperate_output_neurons: bool,
         use_leaky: bool,
         stabilise_nullspace: bool,
@@ -779,17 +799,19 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
         input_model: InputModelBlock,
         time_embedding_size: int,
         device="cuda",
+        **kwargs
     ) -> None:
-        super().__init__(
-            seperate_output_neurons,
-            stabilise_nullspace,
-            sample_ambient_dim,
-            sample_shape,
-            sigma2xt_schedule,
-            residual_model,
-            input_model,
-            time_embedding_size,
-            device,
+        super(RNNBaselineDDPMReverseProcess, self).__init__(
+            seperate_output_neurons = seperate_output_neurons,
+            stabilise_nullspace = stabilise_nullspace,
+            sample_ambient_dim = sample_ambient_dim,
+            sample_shape = sample_shape,
+            sigma2xt_schedule = sigma2xt_schedule,
+            residual_model = residual_model,
+            input_model = input_model,
+            time_embedding_size = time_embedding_size,
+            device = device,
+            **kwargs
         )
 
         self.do_teacher_forcing = False
@@ -848,7 +870,7 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
             - output no longer predicts residuals (epsilon_hat above) but gives the network trajectory in the linear subspace of the sames
                 NB: only intended to be used for the simplest tasks!
         """
-        return super(RNNBaselineDDPMReverseProcess, self).residual(
+        super(RNNBaselineDDPMReverseProcess, self).residual(
             x_samples=x_samples,
             network_input=network_input,
             initial_state=initial_state,
@@ -870,6 +892,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
 
     def __init__(
         self,
+        *_,
         num_prep_steps: int,
         network_input_during_diffusion: bool,
         seperate_output_neurons: bool,
@@ -881,6 +904,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         input_model: InputModelBlock,
         time_embedding_size: int,
         device="cuda",
+        **kwargs
     ) -> None:
 
         super().__init__(
@@ -999,3 +1023,44 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
             end_t_idx=end_t_idx,
         )
         return dict(**prep_dict, **samples_dict)
+
+
+
+class PreparatoryRNNBaselineDDPMReverseProcess(
+    # Check mro!!!
+    RNNBaselineDDPMReverseProcess,
+    PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+):
+    def __init__(
+        self,
+        *_,
+        num_prep_steps: int,
+        network_input_during_diffusion: bool,
+        seperate_output_neurons: bool,
+        use_leaky: bool,
+        stabilise_nullspace: bool,
+        sample_ambient_dim: int,
+        sample_shape: List[int],
+        sigma2xt_schedule: _T,
+        residual_model: VectoralResidualModel,
+        input_model: InputModelBlock,
+        time_embedding_size: int,
+        device="cuda",
+        **kwargs
+    ) -> None:
+        super().__init__(
+            num_prep_steps = num_prep_steps,
+            network_input_during_diffusion = network_input_during_diffusion,
+            seperate_output_neurons = seperate_output_neurons,
+            use_leaky = use_leaky,
+            stabilise_nullspace = stabilise_nullspace,
+            sample_ambient_dim = sample_ambient_dim,
+            sample_shape = sample_shape,
+            sigma2xt_schedule = sigma2xt_schedule,
+            residual_model = residual_model,
+            input_model = input_model,
+            time_embedding_size = time_embedding_size,
+            device = device,
+        )
+
+        

@@ -1,0 +1,54 @@
+
+# Model
+model_name: teacher_forced_delayed_index_cue
+model_config:
+  recurrence_hidden_layers: [32]
+  time_embedding_size: 16
+  sample_ambient_dim: 32
+  indexing_embeddings_same_slots: false
+  residual_model_kwargs:
+    nonlin_first: false
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+  num_items: 2                      # Needed so we can pass index to input model during the cueing phase
+
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.005 # Trained with much less at first
+
+
+# Diffusion -- changed also!
+ultimate_sigma2: 0.30
+starting_sigma2: 0.30
+num_timesteps: 20
+
+# Training/logging
+logging_freq: 1000
+batch_size: 32
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.005
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_d_alt2_index_cued_with_swap_variable_delay"
+
+
+# resume_path: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_d_alt_index_cued_no_swap_variable_delay_0/state.mdl'
+resume_path: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_d_alt2_index_cued_with_swap_variable_delay_1/state.mdl'
+
+
+
+# Task
+task_name: delayed_indexing_cue_fixed_probability_vectoral
+task_config:
+  sample_size: 2
+  sample_radius: 2.5
+
+  # Like Mallett 2022, dt = 0.15
+  stimulus_exposure_duration: 6  # Increased from 5 to help encoding
+  pre_index_delay_duration: [15, 16]  # Decreased from 28 to help with memory
+  index_duration: 5
+  post_index_delay_duration: 1   # Decreased from 80 - now part of diffusion period! - see task!
+
+  residual_in_behaviour_plane_only: false
+  num_items: 2
+  correct_probability: 0.70

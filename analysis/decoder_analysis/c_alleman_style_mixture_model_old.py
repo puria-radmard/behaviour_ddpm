@@ -9,7 +9,7 @@ else:
 random_choice = analysis_args.random_choice
 
 
-decoder = ReportFeatureProjectors(dim_K = 5, dim_R = num_neurons)
+decoder = ProbeFeatureDependentReportFeatureProjector(dim_K = 5, dim_R = num_neurons)
 decoder.cuda()
 
 optim = torch.optim.Adam(decoder.parameters(), lr = 0.1)
@@ -41,6 +41,8 @@ num_samples = 1
 
 infinite_data_mode = True
 
+
+print('SCRIPT C2 REQUIRES A LIMITING SAMPLES TO NON-SWAP OPTION!')
 
 for i in tqdm(range(num_opt_steps)):
 

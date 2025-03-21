@@ -42,12 +42,13 @@ def delayed_probe_cue_vectoral_spike_and_slab(
     pre_index_delay_duration,
     index_duration,
     post_index_delay_duration,
+    cue_with_report,
     **sample_kwargs
 ):
     task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         num_items, correct_probability, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
     )
-    sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemory(num_items=num_items)
+    sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemory(num_items=num_items, cue_with_report=cue_with_report)
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
         sample_size=sample_size, **sample_kwargs
     )
@@ -105,12 +106,13 @@ def delayed_probe_cue_vectoral_with_swap_function(
     pre_index_delay_duration,
     index_duration,
     post_index_delay_duration,
+    cue_with_report,
     **sample_kwargs
 ):
     task_variable_gen = ProbeDistanceProbabilityTaskVariableGenerator(
         num_items, swap_function_width, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
     )
-    sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemory(num_items=num_items)
+    sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemory(num_items=num_items, cue_with_report=cue_with_report)
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
         sample_size=sample_size, **sample_kwargs
     )

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch import Tensor as _T
 
+from abc import ABC, abstractmethod
 
 
 class CrossTemporalLinearDecoder(nn.Module):
@@ -155,7 +156,7 @@ class CrossTemporalNonLinearContextGatedDecoder(CrossTemporalContextGatedDecoder
 
 
 
-class AllemanStyleRoleReportFeatureProjectors(nn.Module):
+class AllemanStyleRoleReportFeatureProjector(nn.Module, ABC):
     """
     Some form of stimulus_n -> r_n, allowing us to build a mixture model
 
@@ -164,27 +165,165 @@ class AllemanStyleRoleReportFeatureProjectors(nn.Module):
     before cuing where:
         u, l are the upper and lower report values
         f is shared spline function (R^2 -> R^K)
-        W. are projectors for the upper and lower functions,
+        W. are projectors for the upper and lower stimuli,
         and η is noise
 
-    We replace the 
+    We replace the spline function with a DNN
     
     After cuing, we have:
         r(u,l,c) =  Wlt f(l) + Wud f(u)+η if c=0
                     Wut f(u) + Wld f(l)+η if c=1
     where:
-        c = 0 means the lower colour is cued
-        and 
+        c = 0 means the lower colour is cued,
+        and Wij is the projector for stumulus i when the cue is j (target vs distractor)
     """
 
-    def __init__(self, dim_K: int, main_layers_sizes = None) -> None:
+    def __init__(self, dim_K: int, dim_R: int, main_layers_sizes = None) -> None:
         super().__init__()
         if main_layers_sizes is None:
             main_layers_sizes = [dim_K, dim_K, dim_K]
 
+        self.dim_K = dim_K
+        self.dim_R = dim_R
+
+        main_layers = [nn.Linear(2, main_layers_sizes[0]), nn.Sigmoid()]
+        for h_in, h_out in zip(main_layers_sizes[:-1], main_layers_sizes[1:]):
+            main_layers.extend([nn.Linear(h_in, h_out), nn.Sigmoid()])
+        main_layers.extend([nn.Linear(main_layers_sizes[-1], dim_K)])
+        self.main_layers = nn.Sequential(*main_layers)
+
+    def get_mixture_model_spline_means(self, report_features: _T) -> _T:
+        assert len(report_features.shape) == 3, f"Expected report_features of shape [B, N, Dr], got {report_features.shape}"
+        return self.main_layers(report_features)
+
+    def get_mixture_model_means_precue(self, report_features: _T, probe_features: _T):
+        spline_means = self.get_mixture_model_spline_means(report_features)                 # [B, N, 2] -> [B, N, K]
+        gating_matrix = self.generate_gating_matrix(probe_features, 'precued')              # [B, T, N, R, K]
+        return torch.einsum('bnk,btnrk->btnr', spline_means, gating_matrix).sum(-2)         # [B, T, R]
+
+    @abstractmethod
+    def get_mixture_model_means_postcue(self, report_features: _T, probe_features: _T, cued_indices: _T):
+        # batch_size = report_features.shape[0]
+        # assert tuple(cued_indices.shape) == (batch_size, )
+        # spline_means = self.get_mixture_model_spline_means(report_features)
+
+        # cued_probe_features = probe_features[torch.arange(batch_size),cued_indices]
+        # cued_gating_matrix = self.generate_gating_matrix(cued_probe_features, 'cued')
+        # cued_mean_components = torch.einsum('bnk,bnrk->bnr', spline_means, cued_gating_matrix)
+        # cued_mean_component = cued_mean_components.sum(1)
+
+        # set_size = probe_features.shape[1]
+        # uncued_indices = torch.tensor([[i for i in range(set_size) if i != ci] for ci in cued_indices])
+        # uncued_probe_features = probe_features[torch.arange(batch_size),uncued_indices]
+        # uncued_gating_matrix = self.generate_gating_matrix(uncued_probe_features, 'uncued')
+        # uncued_mean_components = torch.einsum('bnk,bnrk->bnr', spline_means, uncued_gating_matrix)
+        # uncued_mean_component = uncued_mean_components.sum(1)
+
+        # import pdb; pdb.set_trace()
+
+        # return cued_mean_component + uncued_mean_component
+        pass
+
+    @abstractmethod
+    def generate_gating_matrix(self, probe_features: _T, gating_type: str) -> _T:
+        """
+        probe_features can be actual probe features, or the slot that was cued
+            The latter is the Alleman case after cuing, i.e. binary cued or not for that trial
+            The former is worked on in child classes, see below!
+
+        outputs of shape [B, T, N, R, K]
+
+        gating_type can be 'precued', 'cued', 'uncued'
+        """
 
 
-class ReportFeatureProjectors(nn.Module):
+
+class CuedIndexDependentReportFeatureProjector(AllemanStyleRoleReportFeatureProjector):
+    """
+    Here, we just do what Alleman did, and learn Wu, Wl, Wlt, Wud, Wut, Wld
+        as seperate dim_R x dim_K matrices, for each timestep
+    """
+    def __init__(self, dim_K: int, dim_R: int, precue_duration: int, postcue_duration: int, main_layers_sizes=None) -> None:
+        super().__init__(dim_K, dim_R, main_layers_sizes)
+
+        self.precue_duration = precue_duration
+        self.postcue_duration = postcue_duration
+
+        self.gating = nn.ModuleDict()
+        for name in ['precued_matrix', 'cued_matrix', 'uncued_matrix']:
+            self.gating[name] = nn.Embedding(num_embeddings=2, embedding_dim=dim_K * dim_R * precue_duration)
+
+    def generate_gating_matrix(self, probe_features: _T, gating_type: str) -> _T:
+        """
+        Output is [B, T, N, R, K]
+
+        If gating type is precued, then actual content of probe_features doesn't matter 
+            - we just return output[:,:,0] = upper matrix and output[:,:,1] = lower matrix
+        """
+        assert len(probe_features.shape) == 1, f"Expected probe_features of shape [B], just indexes of which item was cued, got {probe_features.shape}"
+        if gating_type == 'precued':
+            probe_features = probe_features.int()
+            upper_matrix = self.gating['precued_matrix'](torch.zeros_like(probe_features)).reshape(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
+            lower_matrix = self.gating['precued_matrix'](torch.ones_like(probe_features)).reshape(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
+            return torch.stack([upper_matrix, lower_matrix], dim = 2)
+
+        if gating_type == 'precued':
+            import pdb; pdb.set_trace()
+            pass
+    
+    def get_mixture_model_means_postcue(self, report_features: _T, probe_features: _T, cued_indices: _T):
+        """
+        report_features if shaped [B, N, 2]
+        in this case, probe_features is {0, 1}^B
+
+        output is shaped [B, T, R]
+
+        intermediary:
+            spline_means: [B, N, K]
+
+            upper_gating_matrices: [B, T, R, K]
+                if cued_indices[b] == 0, then upper matrix was cued, so:
+                    upper_gating_matrices[b] == reshaped(self.cued_matrix[0])
+                    lower_gating_matrices[b] == reshaped(self.uncued_matrix[1])
+                
+                if cued_indices[b] == 1, then lower matrix was cued, so:
+                    upper_gating_matrices[b] == reshaped(self.uncued_matrix[0])
+                    lower_gating_matrices[b] == reshaped(self.cued_matrix[1])
+
+
+            stacked_gating_matrices: [B, T, N, R, K] = stack(upper_gating_matrices, lower_gating_matrices)
+
+            unmixed output [B, T, N, R] = report_features @ stacked_gating_matrices
+            output [B, T, R]
+        """
+        
+        import pdb; pdb.set_trace()
+        assert (probe_features == cued_indices).all()
+
+        spline_means = self.get_mixture_model_spline_means(report_features)                 # [B, N, 2] -> [B, N, K]
+        batch_size = spline_means.shape[0]
+
+        upper_gating_matrices = torch.zeros(batch_size, self.postcue_duration, self.dim_R, self.dim_K, device = report_features.device)
+        lower_gating_matrices = torch.zeros(batch_size, self.postcue_duration, self.dim_R, self.dim_K, device = report_features.device)
+
+        upper_cued_mask = (probe_features == 0).bool()
+        lower_cued_mask = (probe_features == 1).bool()
+        assert torch.logical_and(upper_cued_mask, lower_cued_mask).all()
+
+        upper_gating_matrices[upper_cued_mask] = self.gating['cued_matrix'](torch.zeros_like(upper_gating_matrices[upper_cued_mask])).reshape(*upper_gating_matrices[upper_cued_mask].shape)
+        upper_gating_matrices[lower_cued_mask] = self.gating['uncued_matrix'](torch.zeros_like(upper_gating_matrices[lower_cued_mask])).reshape(*upper_gating_matrices[lower_cued_mask].shape)
+
+        lower_gating_matrices[lower_cued_mask] = self.gating['cued_matrix'](torch.zeros_like(lower_gating_matrices[lower_cued_mask])).reshape(*lower_gating_matrices[lower_cued_mask].shape)
+        lower_gating_matrices[upper_cued_mask] = self.gating['uncued_matrix'](torch.zeros_like(lower_gating_matrices[upper_cued_mask])).reshape(*lower_gating_matrices[upper_cued_mask].shape)
+
+        stacked_gating_matices = torch.stack([upper_gating_matrices, lower_gating_matrices], dim = 2)
+
+        return torch.einsum('bnk,btnrk->btnr', spline_means, stacked_gating_matices).sum(-2)         # [B, T, R]
+
+
+
+
+class ProbeFeatureDependentReportFeatureProjector(AllemanStyleRoleReportFeatureProjector):
 
     """
     Unlike Alleman et al., 2023, we do not have upper or lower item, the probe feature is circular for us too
@@ -196,21 +335,13 @@ class ReportFeatureProjectors(nn.Module):
         self.uncued_layers(probe_features) -> Like their Wd, sized (N x K)
     """
 
-    def __init__(self, dim_K, dim_R, main_layers_sizes = None, gate_layers_sizes = None) -> None:
-        super().__init__()
+    def __init__(self, dim_K: int, dim_R: int, main_layers_sizes=None, gate_layers_sizes = None) -> None:
+        super().__init__(dim_K, dim_R, main_layers_sizes)
 
+        raise Exception('Make time dependent!')
 
         if gate_layers_sizes is None:
             gate_layers_sizes = [dim_K * dim_R]
-
-        self.dim_K = dim_K
-        self.dim_R = dim_R
-        
-        main_layers = [nn.Linear(2, main_layers_sizes[0]), nn.Sigmoid()]
-        for h_in, h_out in zip(main_layers_sizes[:-1], main_layers_sizes[1:]):
-            main_layers.extend([nn.Linear(h_in, h_out), nn.Sigmoid()])
-        main_layers.extend([nn.Linear(main_layers_sizes[-1], dim_K)])
-        self.main_layers = nn.Sequential(*main_layers)
 
         self.gating = nn.ModuleDict()
         for name in ['precued_layers', 'cued_layers', 'uncued_layers']:
@@ -220,36 +351,9 @@ class ReportFeatureProjectors(nn.Module):
             gate_layers.extend([nn.Linear(gate_layers_sizes[-1], dim_R * dim_K)])
             self.gating[name] = nn.Sequential(*gate_layers)
 
-    def get_mixture_model_spline_means(self, report_features: _T) -> _T:
-        assert len(report_features.shape) == 3, f"Expected report_features of shape [B, N, Dr], got {report_features.shape}"
-        return self.main_layers(report_features)
-
     def generate_gating_matrix(self, probe_features: _T, gating_type: str) -> _T:
         assert len(probe_features.shape) == 3, f"Expected probe_features of shape [B, N, Dr], got {probe_features.shape}"
         flat_matrix = self.gating[gating_type + '_layers'](probe_features)
         return flat_matrix.reshape(*flat_matrix.shape[:-1], self.dim_R, self.dim_K)
-    
-    def get_mixture_model_means_precue(self, report_features: _T, probe_features: _T):
-        spline_means = self.get_mixture_model_spline_means(report_features)
-        gating_matrix = self.generate_gating_matrix(probe_features, 'precued')
-        return torch.einsum('bnk,bnrk->bnr', spline_means, gating_matrix).sum(1)
-    
-    def get_mixture_model_means_postcue(self, report_features: _T, probe_features: _T, cued_indices: _T):
-        batch_size = report_features.shape[0]
-        assert tuple(cued_indices.shape) == (batch_size, )
-        spline_means = self.get_mixture_model_spline_means(report_features)
 
-        cued_probe_features = probe_features[torch.arange(batch_size),cued_indices]
-        cued_gating_matrix = self.generate_gating_matrix(cued_probe_features, 'cued')
-        cued_mean_components = torch.einsum('bnk,bnrk->bnr', spline_means, cued_gating_matrix)
-        cued_mean_component = cued_mean_components.sum(1)
-
-        set_size = probe_features.shape[1]
-        uncued_indices = torch.tensor([[i for i in range(set_size) if i != ci] for ci in cued_indices])
-        uncued_probe_features = probe_features[torch.arange(batch_size),uncued_indices]
-        uncued_gating_matrix = self.generate_gating_matrix(uncued_probe_features, 'uncued')
-        uncued_mean_components = torch.einsum('bnk,bnrk->bnr', spline_means, uncued_gating_matrix)
-        uncued_mean_component = uncued_mean_components.sum(1)
-
-        return cued_mean_component + uncued_mean_component
 

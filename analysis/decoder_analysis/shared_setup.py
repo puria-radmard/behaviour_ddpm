@@ -14,7 +14,7 @@ from purias_utils.util.arguments_yaml import ConfigNamepace
 
 from scipy.stats import ttest_rel
 
-from ddpm.utils.loading import generate_model_and_task_from_args_path_multiepoch
+from ddpm.utils.loading import generate_model_and_task_from_args_path_multiepoch, generate_model_and_task_from_args_path
 
 
 analysis_args = ConfigNamepace.from_yaml_path(sys.argv[1])
@@ -25,9 +25,12 @@ yaml_name = sys.argv[1].split('/')[-1].split('.')[0]
 run_name = analysis_args.run_name
 
 device = 'cuda'
-_, task, ddpm_model, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/args.yaml', device)
+try:
+    _, task, ddpm_model, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/args.yaml', device)
+    num_neurons = ddpm_model.sample_ambient_dim
+except:
+    _, task, ddpm_model, _ = generate_model_and_task_from_args_path(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/args.yaml', device)
 ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/state.mdl'))
 
 ddpm_model.eval()
 
-num_neurons = ddpm_model.sample_ambient_dim

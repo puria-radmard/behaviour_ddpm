@@ -79,12 +79,13 @@ class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
     Diffusion epoch 1: nothing (but pass as zeros of same shape as prep epoch 1)
     """
 
-    def __init__(self, num_items: int) -> None:
+    def __init__(self, num_items: int, cue_with_report: bool) -> None:
         self.required_task_variable_keys = {"report_features_cart", "probe_features_cart", "cued_item_idx"}
         self.num_items = num_items
         self.underlying_sensory_shape = [num_items * 4 + 2]
         self.prep_sensory_shape = [self.underlying_sensory_shape] * 4
         self.diffusion_sensory_shapes = [self.underlying_sensory_shape]
+        self.cue_with_report = cue_with_report
 
     def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["report_features_cart"].shape[0]
@@ -103,7 +104,13 @@ class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
         flattened_coords_with_empty = torch.concat([flattened_report_coords, flattened_probe_coords, empty_probe], -1)
         index = variable_dict["cued_item_idx"]
         empty_features = torch.zeros(batch_size, self.num_items * 4)
-        chosen_probe_coords = variable_dict["report_features_cart"][range(batch_size), index]
+        if 'override_cue_features_cart' in variable_dict:
+            chosen_probe_coords = variable_dict['override_cue_features_cart']
+            print('override_cue_features_cart being used by DelayedProbeCuingSensoryGeneratorWithMemory.generate_prep_sensory_inputs! This should not be used for training ever!')
+        elif self.cue_with_report:
+            chosen_probe_coords = variable_dict["report_features_cart"][range(batch_size), index]
+        else:
+            chosen_probe_coords = variable_dict["probe_features_cart"][range(batch_size), index]
         chosen_probe_coords = torch.concat([empty_features, chosen_probe_coords], -1)
         empty = torch.zeros(batch_size, self.num_items * 4 + 2)
         return [flattened_coords_with_empty, empty, chosen_probe_coords, empty]
@@ -117,7 +124,7 @@ class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
 class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSensoryGeneratorWithMemory):
 
     def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, vectorise_input: bool = True) -> None:
-        super().__init__(num_items)
+        super().__init__(num_items, False)
 
         self.probe_num_tc = probe_num_tc
         self.report_num_tc = report_num_tc
@@ -156,7 +163,6 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
         rescaled_diffs = rescaled_diffs * peak
         return rescaled_diffs
 
-
     def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
 
         probe_repr = self.generate_responses(variable_dict["probe_features"], self.probe_centers, self.probe_tuning_scales, 1.0)        # [B, N, probe size]
@@ -173,7 +179,15 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
             joint_resp = joint_repr
         joint_resp = joint_resp.sum(1)
 
-        cue_repr = (probe_repr * flat_report_repr)  # [B, N, probe size, report size]
+        if 'override_cue_features' in variable_dict:
+            print('override_cue_features being used by DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest.generate_prep_sensory_inputs! This should not be used for training ever!')
+            overriden_probe_repr = self.generate_responses(variable_dict["override_cue_features"], self.probe_centers, self.probe_tuning_scales, 1.0)        # [B, N, probe size]
+            overriden_probe_repr = overriden_probe_repr.unsqueeze(-2)
+            cue_repr = (overriden_probe_repr * flat_report_repr)  # [B, N, probe size, report size]
+
+        else:
+            cue_repr = (probe_repr * flat_report_repr)  # [B, N, probe size, report size]
+
         if self.vectorise_input:
             cue_resp = cue_repr.reshape(cue_repr.shape[0], self.num_items, -1)  # [B, total size]
         else:

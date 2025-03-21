@@ -301,11 +301,16 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
         selected_item = torch.randint(0, self.num_items, (batch_size,))
         selected_item_mask = torch.zeros(batch_size, self.num_items).bool()
         selected_item_mask[range(batch_size), selected_item] = True
-        probability_vector = torch.zeros(batch_size, self.num_items)
-        probability_vector[selected_item_mask] = self.correct_probability
-        probability_vector[~selected_item_mask] = (1.0 - self.correct_probability) / (
-            self.num_items - 1
-        )
+        if self.num_items > 1:
+            probability_vector = torch.zeros(batch_size, self.num_items)
+            probability_vector[selected_item_mask] = self.correct_probability
+            probability_vector[~selected_item_mask] = (1.0 - self.correct_probability) / (
+                self.num_items - 1
+            )
+        elif self.num_items == 1:
+            probability_vector = torch.ones(batch_size, self.num_items).to(
+                variable_dict["report_features"].dtype
+            )
         # assert set(probability_vector.sum(-1).unique().tolist()) == {1.0}
         return {
             "swap_probabilities": probability_vector,

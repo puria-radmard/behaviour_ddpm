@@ -145,19 +145,20 @@ class ProbeCuingSensoryGenerator(SensoryGenerator):
             self.num_items,
             2,
         )
-        flattened_coords = variable_dict["report_features_cart"].reshape(
+        flattened_report_coords = variable_dict["report_features_cart"].reshape(
             batch_size, -1
         )  # on each batch row: x1, y1, x2, y2, ...
         flattened_probe_coords = variable_dict["probe_features_cart"].reshape(
             batch_size, -1
         )  # on each batch row: x1, y1, x2, y2, ...
-        selected_probe_coords = torch.stack(
-            [
-                variable_dict["probe_features_cart"][b, i]
-                for b, i in enumerate(variable_dict["cued_item_idx"])
-            ]
-        )
+
+        if 'override_cue_features_cart' in variable_dict:
+            selected_probe_coords = variable_dict['override_cue_features_cart']
+            print('override_cue_features_cart being used by DelayedProbeCuingSensoryGeneratorWithMemory.generate_prep_sensory_inputs! This should not be used for training ever!')
+        else:
+            selected_probe_coords = variable_dict["probe_features_cart"][range(batch_size),variable_dict["cued_item_idx"]]
+
         report_features_and_index = torch.concat(
-            [flattened_coords, flattened_probe_coords, selected_probe_coords], 1
+            [flattened_report_coords, flattened_probe_coords, selected_probe_coords], 1
         )
         return report_features_and_index

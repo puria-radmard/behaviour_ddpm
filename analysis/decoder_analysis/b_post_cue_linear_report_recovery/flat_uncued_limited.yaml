@@ -1,4 +1,4 @@
-run_name: 'run_b2_probe_cued_with_probe_flat_swap_fewer_variable_delay_0'
+run_name: 'run_b2_probe_cued_with_probe_flat_swap_fewer_variable_delay_1'
 ctd_batch_size: 1024 
 num_opt_steps: 5000 
 decoder_type: 'linear'
