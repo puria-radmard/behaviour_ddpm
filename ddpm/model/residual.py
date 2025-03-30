@@ -5,7 +5,7 @@ from torch import nn
 from torch import vmap
 from torch import Tensor as _T
 
-from typing import List, Mapping, Any
+from typing import List, Mapping, Any, Optional
 
 
 from ddpm.model.unet import UNet
@@ -33,12 +33,16 @@ class VectoralResidualModel(nn.Module):
         self.time_embedding_size = time_embedding_size
         self.nonlin_first = nonlin_first
 
-        all_layer_sizes = recurrence_hidden_layers + [state_space_size]
+        recurrence_layers = self.generate_layers(recurrence_hidden_layers)
+        self.layers = nn.ModuleList(recurrence_layers)  # R^N -> R^N
+
+    def generate_layers(self, recurrence_hidden_layers) -> List[nn.Module]:
+        all_layer_sizes = recurrence_hidden_layers + [self.state_space_size]
         recurrence_layers = []
         recurrence_layers.extend(
             [
                 nn.Linear(
-                    state_space_size + time_embedding_size + input_size,
+                    self.state_space_size + self.time_embedding_size + self.input_size,
                     all_layer_sizes[0],
                 ),
                 nn.Softplus(),
@@ -50,7 +54,8 @@ class VectoralResidualModel(nn.Module):
             )
         recurrence_layers = recurrence_layers[:-1]
 
-        self.layers = nn.ModuleList(recurrence_layers)  # R^N -> R^N
+        return recurrence_layers
+
 
     @staticmethod
     def unsqueeze_start_dims(tensor: _T, start_dims: List[int]):
@@ -79,7 +84,7 @@ class VectoralResidualModel(nn.Module):
         )
         return x_concat
 
-    def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
+    def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T, *_, override_layers: Optional[nn.Module]) -> _T:
         """
         x of shape [..., T, state_space_size]
         t_embeddings_schedule of shape [T, time_emb_size]
@@ -94,9 +99,39 @@ class VectoralResidualModel(nn.Module):
         if self.nonlin_first:
             x = torch.nn.functional.softplus(x)
         x = self.concatenate_with_time_and_input(x, t_embeddings_schedule, input_vector)
-        for layer in self.layers:
+        layers = override_layers or self.layers
+        for layer in layers:
             x = layer(x)
         return x
+
+
+
+class BouncePopulationResidualModel(VectoralResidualModel):
+    """
+    State is now shaped [2, D]
+    Each state takes in the other one to get its own residual
+    
+    For now assume recurrence layers are the same, and all is 'biological'
+    """
+    def __init__(self, state_space_size: int, input_size: int, time_embedding_size: int,) -> None:
+        super().__init__(state_space_size, [], input_size, time_embedding_size, nonlin_first = True)
+        import pdb; pdb.set_trace(header = 'make sure everything worked!')
+        self.bounceback_layers = self.generate_layers([])
+
+    def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
+        primary_to_bounce = super().forward(x[...,0,:], t_embeddings_schedule, input_vector)
+        bounce_to_primary = super().forward(x[...,1,:], t_embeddings_schedule, input_vector, override_layers = self.bounceback_layers)
+        import pdb; pdb.set_trace(header = 'check shape!')
+        return torch.stack([bounce_to_primary, primary_to_bounce], dim=-2)    # reversed!
+
+    def load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False):
+        try:
+            return super().load_state_dict(state_dict, strict, assign)
+        except:
+            import pdb; pdb.set_trace(header = 'trying to load VectoralResidualModel weights into BouncePopulationResidualModel should be allowed!')
+    
+
+
 
 
 class UNetResidualModel(nn.Module):

@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Literal
 
 import torch
 from torch import Tensor as _T
@@ -9,7 +9,8 @@ from ddpm.model.input import InputModelBlock
 from ddpm.model.main.base import (
     PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
     PreparatoryRNNBaselineDDPMReverseProcess,
-    PreparatoryHVAEReverseProcess
+    PreparatoryHVAEReverseProcess,
+    PreparatoryBounceNetworkHVAEReverseProcess
 )
 
 
@@ -230,6 +231,45 @@ class MultiPreparatoryHVAEReverseProcess(
         )
 
 
+class MultiPreparatoryBounceNetworkHVAEReverseProcess(
+    MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+    PreparatoryBounceNetworkHVAEReverseProcess
+):
+    def __init__(
+        self,
+        seperate_output_neurons: bool,
+        primary_euler_alpha: float,
+        bounce_euler_alpha: float | Literal['instant'],
+        sample_ambient_dim: int,
+        sample_shape: List[int],
+        sigma2xt_schedule: _T,
+        residual_model: VectoralResidualModel,
+        input_model: InputModelBlock,
+        time_embedding_size: int,
+        noise_scaler: float,
+        train_as_rnn: bool,
+        device="cuda",
+        **kwargs
+    ) -> None:
+
+        super().__init__(
+            # num_prep_steps = None,
+            # network_input_during_diffusion = None,
+            seperate_output_neurons = seperate_output_neurons,
+            primary_euler_alpha=primary_euler_alpha,
+            bounce_euler_alpha=bounce_euler_alpha,
+            sample_ambient_dim = sample_ambient_dim,
+            sample_shape = sample_shape,
+            sigma2xt_schedule = sigma2xt_schedule,
+            residual_model = residual_model,
+            input_model = input_model,
+            time_embedding_size = time_embedding_size,
+            noise_scaler = noise_scaler,
+            train_as_rnn = train_as_rnn,
+            device = device,
+        )
+
+
 class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
 ):
@@ -284,7 +324,7 @@ class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReversePro
             * self.base_std
         )  # [..., 1, D]
 
-        embedded_samples = pre_prep_samples @ self.auxiliary_embedding_matrix
+        embedded_samples = self.extract_subspace(pre_prep_samples)
 
         sample_removed_initial_state = initial_state - (
             initial_state @ self.sample_subspace_accessor

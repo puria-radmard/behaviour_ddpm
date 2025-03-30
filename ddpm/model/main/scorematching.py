@@ -1,3 +1,5 @@
+raise Exception('deprecated')
+
 import torch
 from torch import nn
 from torch import Tensor as _T
