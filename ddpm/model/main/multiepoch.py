@@ -9,6 +9,7 @@ from ddpm.model.input import InputModelBlock
 from ddpm.model.main.base import (
     PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
     PreparatoryRNNBaselineDDPMReverseProcess,
+    PreparatoryHVAEReverseProcess
 )
 
 
@@ -36,7 +37,7 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         **kwargs
     ) -> None:
 
-        super().__init__(
+        super(MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess, self).__init__(
             num_prep_steps = None,
             network_input_during_diffusion = None,
             seperate_output_neurons = seperate_output_neurons,
@@ -121,6 +122,7 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
                 prep_network_inputs[0],
                 samples_shape,
                 prep_epoch_durations[0],
+                noise_scaler=noise_scaler,
                 override_initial_state=override_initial_state,
             )
         ]
@@ -130,6 +132,7 @@ class MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
                     pni,
                     samples_shape,
                     ped,
+                    noise_scaler=noise_scaler,
                     override_initial_state=all_prep_dicts[-1]["postprep_state"],
                 )
             )
@@ -187,6 +190,42 @@ class MultiPreparatoryRNNBaselineDDPMReverseProcess(
             residual_model = residual_model,
             input_model = input_model,
             time_embedding_size = time_embedding_size,
+            device = device,
+        )
+
+
+class MultiPreparatoryHVAEReverseProcess(
+    MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+    PreparatoryHVAEReverseProcess
+):
+    def __init__(
+        self,
+        seperate_output_neurons: bool,
+        sample_ambient_dim: int,
+        sample_shape: List[int],
+        sigma2xt_schedule: _T,
+        residual_model: VectoralResidualModel,
+        input_model: InputModelBlock,
+        time_embedding_size: int,
+        noise_scaler: float,
+        train_as_rnn: bool,
+        device="cuda",
+        **kwargs
+    ) -> None:
+
+        super().__init__(
+            # num_prep_steps = None,
+            # network_input_during_diffusion = None,
+            seperate_output_neurons = seperate_output_neurons,
+            stabilise_nullspace = True,
+            sample_ambient_dim = sample_ambient_dim,
+            sample_shape = sample_shape,
+            sigma2xt_schedule = sigma2xt_schedule,
+            residual_model = residual_model,
+            input_model = input_model,
+            time_embedding_size = time_embedding_size,
+            noise_scaler = noise_scaler,
+            train_as_rnn = train_as_rnn,
             device = device,
         )
 
@@ -302,3 +341,5 @@ class InitialisedSampleSpacePreparatoryLinearSubspaceTeacherForcedDDPMReversePro
             end_t_idx=end_t_idx,
             override_initial_state=override_initial_state,
         )
+
+

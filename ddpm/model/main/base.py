@@ -99,6 +99,13 @@ class DDPMReverseProcessBase(nn.Module, ABC):
             :, *[None for _ in self.sample_shape]
         ]  # [T, <1 for each of shape x>]
 
+        self.reshaped_base_samples_scaler_schedule = self.base_samples_scaler_schedule[
+            :, *[None for _ in self.sample_shape]
+        ]
+        self.reshaped_residual_scaler_schedule = self.residual_scaler_schedule[
+            :, *[None for _ in self.sample_shape]
+        ]
+
         self.device = device
         self.to(device)
 
@@ -114,12 +121,18 @@ class DDPMReverseProcessBase(nn.Module, ABC):
         self.reshaped_root_b_t_schedule = self.reshaped_root_b_t_schedule.to(
             *args, **kwargs
         )
+        self.reshaped_base_samples_scaler_schedule = self.reshaped_base_samples_scaler_schedule.to(
+            *args, **kwargs
+        )
+        self.reshaped_residual_scaler_schedule = self.reshaped_residual_scaler_schedule.to(
+            *args, **kwargs
+        )
         # self.mse_scaler_schedule = self.mse_scaler_schedule.to(*args, **kwargs)
         self.noise_scaler_schedule = self.noise_scaler_schedule.to(*args, **kwargs)
         return super(DDPMReverseProcessBase, self).to(*args, **kwargs)
 
     @abstractmethod
-    def noise(self, x_0: _T) -> Dict[str, _T]:
+    def noise(self, x_0: _T) -> Dict[str, _T | int]:
         """
         x_0 of shape [..., <shape x>]
 
@@ -230,6 +243,7 @@ class DDPMReverseProcessBase(nn.Module, ABC):
                     own_state[name][:, : len(required_dims)] = copyable_param
 
 
+
 class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
     """
     Standard DDPM noising - whole space noised together, space noised one-shot
@@ -237,7 +251,7 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
     At training time, residuals are predicted for each timestep independently
     """
 
-    def noise(self, x_0: _T) -> Dict[str, _T]:
+    def noise(self, x_0: _T) -> Dict[str, _T | int]:
         """
         x_0 of shape [..., <shape x>]
 
@@ -385,6 +399,7 @@ class OneShotDDPMReverseProcess(DDPMReverseProcessBase):
         }
 
 
+
 class TeacherForcedDDPMReverseProcessBase(DDPMReverseProcessBase):
     """
     Now, we are doing sequential noising, which will be denoised alongside some
@@ -419,7 +434,7 @@ class TeacherForcedDDPMReverseProcessBase(DDPMReverseProcessBase):
         )
 
     @torch.no_grad()
-    def noise(self, x_0: _T) -> Dict[str, _T]:
+    def noise(self, x_0: _T) -> Dict[str, _T | int]:
         """
         x_0 of shape [..., <shape x>]
 
@@ -453,7 +468,9 @@ class TeacherForcedDDPMReverseProcessBase(DDPMReverseProcessBase):
             "x_t": x_t,
             "epsilon_actual": epsilon_actual,
             "epsilon": epsilon_effective,
+            "num_extra_dim": num_extra_dim
         }
+
 
 
 class LinearSubspaceTeacherForcedDDPMReverseProcess(
@@ -468,6 +485,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
 
     def __init__(
         self,
+        *_,
         seperate_output_neurons: bool,
         stabilise_nullspace: bool,
         sample_ambient_dim: int,
@@ -604,11 +622,13 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
         one_step_denoising = initial_state.unsqueeze(-2)  # [..., 1, ambient space dim]
         all_predicted_residuals = []
         all_subspace_trajectories = []
+        all_trajectories = []
 
         for t_idx in range(1, self.T + 1):
 
             # If required, correct the state. This is equivalent to just replacing the embedded_predicted_residual
             if self.do_teacher_forcing:
+
                 # Course correct in the linear sample subspace ---> (sample_removed_one_step_denoising @ self.auxiliary_embedding_matrix.T).abs().max() is very small
                 sample_removed_one_step_denoising = one_step_denoising - (
                     one_step_denoising @ self.sample_subspace_accessor
@@ -637,6 +657,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
 
             subspace_activity = one_step_denoising @ self.auxiliary_embedding_matrix.T
             all_subspace_trajectories.append(subspace_activity)
+            all_trajectories.append(one_step_denoising)
 
         epsilon_hat = torch.concat(
             all_predicted_residuals[::-1], num_extra_dim
@@ -648,9 +669,14 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
         )  # keep as reverse (denoising) time!
         assert x_samples.shape == subspace_trajectories.shape
 
+        trajectories = torch.concat(
+            all_trajectories, num_extra_dim
+        )
+
         return {
             "epsilon_hat": epsilon_hat,
             "subspace_trajectories": subspace_trajectories,
+            "trajectories": trajectories,
         }
 
     def generate_samples(
@@ -724,21 +750,6 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
                 base_samples, t_embedding, input_vectors[..., [-t_idx], :]
             )
 
-            # XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ###
-            # print("replacing with true score - shouldn't even be accessible here")
-            # subspace_activity = base_samples @ self.auxiliary_embedding_matrix.T
-
-            # true_score = target_distribution.calculate_score(
-            #     subspace_activity, self.a_t_schedule[[-t_idx]], self.root_b_t_schedule[[-t_idx]].square()
-            # ).detach()[[0]]
-
-            # predicted_residual = predicted_residual - (
-            #     predicted_residual @ self.sample_subspace_accessor
-            # ) + (
-            #     true_score @ self.auxiliary_embedding_matrix
-            # )
-            # XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ### XXX ###
-
             base_samples, early_embedded_x0_pred = self.denoise_one_step(
                 t_idx, base_samples, predicted_residual, noise_scaler
             )
@@ -772,6 +783,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             "early_x0_preds": early_x0_preds.cpu(),
             "epsilon_hat": all_predicted_residual.detach().cpu(),
         }
+
 
 
 class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProcess):
@@ -828,7 +840,7 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
             )  # like 1 - euler_alpha
             self.residual_scaler_schedule = 1.0 - self.base_samples_scaler_schedule
 
-    def noise(self, x_0: _T) -> Dict[str, _T]:
+    def noise(self, x_0: _T) -> Dict[str, _T | int]:
         """
         x_0 of shape [..., <shape x>]
 
@@ -878,6 +890,106 @@ class RNNBaselineDDPMReverseProcess(LinearSubspaceTeacherForcedDDPMReverseProces
         )
 
 
+
+class LinearSubspaceTeacherForcedHVAEReverseProcess(
+    LinearSubspaceTeacherForcedDDPMReverseProcess
+):
+    """
+    After the (re)rehaul on 27.03.2025
+
+    Using the name "HVAE" to refer to models which directly generate samples from p(x_{t-1} | x_t)
+    
+    TODO: define the new functionality below at a more abstract level
+        - e.g. class HVAEReverseProcessBase(DDPMReverseProcessBase): ...
+
+    The main rehauls are that:
+        1. denoise_one_step is not 'gated', we take in "predicted residual" and just add the transition kernelleakily
+        2. noise also adds a target for the transition kernel
+    """
+
+    def __init__(self, *_, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, noise_scaler: float, train_as_rnn: bool, device="cuda", **kwargs) -> None:
+        
+        super().__init__(
+            num_prep_steps=None,
+            network_input_during_diffusion=None,
+            seperate_output_neurons=seperate_output_neurons,
+            stabilise_nullspace=stabilise_nullspace,
+            sample_ambient_dim=sample_ambient_dim,
+            sample_shape=sample_shape,
+            sigma2xt_schedule=sigma2xt_schedule,
+            residual_model=residual_model,
+            input_model=input_model,
+            time_embedding_size=time_embedding_size,
+            device=device
+        )
+
+        assert self.stabilise_nullspace, "LinearSubspaceTeacherForcedDDPMReverseProcess requires stabilise_nullspace=True for full awareness!"
+        del self.stabilise_nullspace    # Should not be used!
+        
+        self.train_as_rnn = train_as_rnn
+        if train_as_rnn:
+            self.do_teacher_forcing = False
+        self.noise_scaler = noise_scaler
+        
+        if noise_scaler == 'nat':
+            pass
+        elif isinstance(noise_scaler, float):
+            self.noise_scaler_schedule = (
+                torch.ones_like(self.noise_scaler_schedule)
+                * self.noise_scaler_schedule[1] * noise_scaler
+            )
+        else:
+            raise ValueError(noise_scaler)
+
+    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, noise_scaler: float):
+        """
+        predicted_residual (misnomer) now just acts as the integration term in continuous time, i.e. f(...) in
+
+        \tau \dot x_t = -x_t + f(x_t, s_t, t) + v_t \eta
+
+        using HVAE time convention => x_{t-1} = (1-euler_alpha) x_t + euler_alpha (f(x_t, s_t, t) + v_t \eta)
+
+        XXX: scale noise by euler alpha also!??
+        """
+
+        noise = noise_scaler * torch.randn_like(x_t_plus_1)
+        scaled_noise = noise * self.noise_scaler_schedule[-t_idx]
+
+        leaky_term = (1 - self.euler_alpha) * x_t_plus_1
+        integration_term = self.euler_alpha * (predicted_residual)
+
+        x_t = leaky_term + integration_term + scaled_noise
+        fake_early_x0_pred = torch.ones_like(x_t) * torch.nan
+
+        return x_t, fake_early_x0_pred
+    
+    def noise(self, x_0: _T) -> Dict[str, _T | int]:
+        """
+        Target for the transition ernel is based on the q_posterior mean:
+
+            posterior_mean = mu_q = (x_t - \gamma_t \epsilon_t)
+            \gamma_t = \beta_t / \sqrt{1-\bar\alpha_t}
+
+        ...but altered by the euler discretisation:
+
+            mu_q <-> (1-euler_alpha) x_t + euler_alpha f(x_t, s_t, t)
+
+            ==> f(x_t, s_t, t) <-> (mu_q - (1-euler_alpha) x_t) / euler_alpha
+        """
+        noising_dict = super().noise(x_0)
+        num_extra_dim = noising_dict['num_extra_dim']
+        if self.train_as_rnn:
+            noising_dict['unnoised_target'] = x_0.unsqueeze(num_extra_dim).expand(*noising_dict['x_t'].shape)
+        else:
+            scaled_base_samples = self.reshaped_base_samples_scaler_schedule[*[None]*num_extra_dim] * noising_dict['x_t']
+            scaled_residual = self.reshaped_residual_scaler_schedule[*[None]*num_extra_dim] * noising_dict['epsilon']
+            one_step_denoise_mean = scaled_base_samples - scaled_residual       # mu_q      [..., T, <shape samples>]
+            kernel_target = (one_step_denoise_mean - (1 - self.euler_alpha) * noising_dict['x_t']) / self.euler_alpha
+            noising_dict['kernel_target'] = kernel_target
+        return noising_dict
+
+
+
 class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
     LinearSubspaceTeacherForcedDDPMReverseProcess
 ):
@@ -908,15 +1020,15 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
     ) -> None:
 
         super().__init__(
-            seperate_output_neurons,
-            stabilise_nullspace,
-            sample_ambient_dim,
-            sample_shape,
-            sigma2xt_schedule,
-            residual_model,
-            input_model,
-            time_embedding_size,
-            device,
+            seperate_output_neurons=seperate_output_neurons,
+            stabilise_nullspace=stabilise_nullspace,
+            sample_ambient_dim=sample_ambient_dim,
+            sample_shape=sample_shape,
+            sigma2xt_schedule=sigma2xt_schedule,
+            residual_model=residual_model,
+            input_model=input_model,
+            time_embedding_size=time_embedding_size,
+            device=device,
         )
 
         self.register_parameter(
@@ -933,6 +1045,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         num_steps: int,
         kwargs_for_residual_model={},
         *_,
+        noise_scaler: float = 1.0,
         override_initial_state: Optional[_T] = None,
     ) -> Dict[str, _T]:
         """
@@ -970,7 +1083,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
                 recent_state, self.prep_time_embedding, input_vectors[..., [-t_idx], :]
             )
             recent_state, _ = self.denoise_one_step(
-                1, recent_state, embedded_predicted_residual, noise_scaler=1.0
+                1, recent_state, embedded_predicted_residual, noise_scaler=noise_scaler
             )
             preparatory_trajectory.append(recent_state)
 
@@ -991,7 +1104,9 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         self, x_samples: _T, network_input: _T, kwargs_for_residual_model={}
     ) -> Dict[str, _T]:
         prep_dict = self.prepare(
-            network_input, x_samples.shape[:-2], self.num_prep_steps
+            network_input=network_input,
+            batch_shape=x_samples.shape[:-2],
+            num_steps=self.num_prep_steps,
         )
         network_input_mult = 1.0 if self.network_input_during_diffusion else 0.0
         residual_dict = super().residual(
@@ -1011,7 +1126,11 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
         kwargs_for_residual_model={},
         end_t_idx=None,
     ) -> Dict[str, _T]:
-        prep_dict = self.prepare(network_input, samples_shape, self.num_prep_steps)
+        prep_dict = self.prepare(
+            network_input=network_input,
+            batch_shape=samples_shape,
+            num_steps=self.num_prep_steps,
+        )
         network_input_mult = 1.0 if self.network_input_during_diffusion else 0.0
         samples_dict = super().generate_samples(
             network_input=network_input * network_input_mult,
@@ -1027,7 +1146,6 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
 
 
 class PreparatoryRNNBaselineDDPMReverseProcess(
-    # Check mro!!!
     RNNBaselineDDPMReverseProcess,
     PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 ):
@@ -1063,4 +1181,25 @@ class PreparatoryRNNBaselineDDPMReverseProcess(
             device = device,
         )
 
-        
+
+class PreparatoryHVAEReverseProcess(
+    LinearSubspaceTeacherForcedHVAEReverseProcess,
+    PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+):
+
+    def __init__(self, *_, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, noise_scaler: float, train_as_rnn: bool, device="cuda", **kwargs) -> None:
+        super().__init__(
+            num_prep_steps=None,
+            network_input_during_diffusion=None,
+            seperate_output_neurons=seperate_output_neurons,
+            stabilise_nullspace=stabilise_nullspace,
+            sample_ambient_dim=sample_ambient_dim,
+            sample_shape=sample_shape,
+            sigma2xt_schedule=sigma2xt_schedule,
+            residual_model=residual_model,
+            input_model=input_model,
+            time_embedding_size=time_embedding_size,
+            noise_scaler=noise_scaler,
+            train_as_rnn = train_as_rnn,
+            device=device
+        )

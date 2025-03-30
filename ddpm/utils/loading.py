@@ -39,7 +39,7 @@ def generate_model_and_task_from_args_path_multiepoch(args_path, device):
 
     residual_model_kwargs = model_config.dict.pop('residual_model_kwargs').dict
     ddpm_model_kwargs = model_config.dict.pop('ddpm_model_kwargs').dict
-    ddpm_model, mse_key = getattr(model, args.model_name)(
+    ddpm_model, mse_key_pred, mse_key_target = getattr(model, args.model_name)(
         **model_config.dict, 
         residual_model_kwargs=residual_model_kwargs, 
         ddpm_model_kwargs=ddpm_model_kwargs,
@@ -52,4 +52,4 @@ def generate_model_and_task_from_args_path_multiepoch(args_path, device):
 
     ddpm_model.to(device)
 
-    return args, task, ddpm_model, mse_key
+    return args, task, ddpm_model, mse_key_pred, mse_key_target

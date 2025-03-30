@@ -1,6 +1,6 @@
 import torch, sys, os
 
-from analysis.decoder_analysis.decoders import *
+from analysis.decoders import *
 
 from tqdm import tqdm
 import numpy as np
@@ -26,11 +26,11 @@ run_name = analysis_args.run_name
 
 device = 'cuda'
 try:
-    _, task, ddpm_model, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/args.yaml', device)
+    _, task, ddpm_model, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_curriculum_activity_reg_20250322/{run_name}/args.yaml', device)
     num_neurons = ddpm_model.sample_ambient_dim
 except:
-    _, task, ddpm_model, _ = generate_model_and_task_from_args_path(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/args.yaml', device)
-ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_further_20250120/{run_name}/state.mdl'))
+    _, task, ddpm_model, _ = generate_model_and_task_from_args_path(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_curriculum_activity_reg_20250322/{run_name}/args.yaml', device)
+ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_curriculum_activity_reg_20250322/{run_name}/state.mdl'))
 
 ddpm_model.eval()
 

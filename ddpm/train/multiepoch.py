@@ -39,13 +39,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # Unpack all args
-state_space_size = args.state_space_size
-recurrence_hidden_layers = args.recurrence_hidden_layers
-time_embedding_size = args.time_embedding_size
 ultimate_sigma2 = args.ultimate_sigma2
 starting_sigma2 = args.starting_sigma2
 num_timesteps = args.num_timesteps
-noise_schedule_power = args.noise_schedule_power
 num_samples = args.num_samples
 batch_size = args.batch_size
 num_trials = args.num_trials
@@ -54,6 +50,9 @@ save_base = args.save_base
 task_name = args.task_name
 task_config = args.task_config
 regularise_prep_state_weight = args.regularise_prep_state_weight
+regularise_prep_activity_indices = args.regularise_prep_activity_indices
+regularise_prep_activity_weight = args.regularise_prep_activity_weight
+regularise_diffusion_nullspace = args.regularise_diffusion_nullspace
 model_name = args.model_name
 model_config = args.model_config
 lr = args.lr
@@ -71,6 +70,7 @@ timer = LoopTimer(num_trials)
 )
 all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
 all_prep_state_losses = np.zeros([num_trials])
+all_delay_activity_losses = np.zeros([num_trials])
 args.write_to_yaml(os.path.join(save_base, "args.yaml"))
 
 
@@ -88,7 +88,7 @@ task.save_metadata(os.path.join(save_base, "task_metadata"))
 # Set up model
 residual_model_kwargs = model_config.dict.pop("residual_model_kwargs").dict
 ddpm_model_kwargs = model_config.dict.pop("ddpm_model_kwargs").dict
-ddpm_model, mse_key = getattr(model, model_name)(
+ddpm_model, mse_key_pred, mse_key_target = getattr(model, model_name)(
     **model_config.dict,
     residual_model_kwargs=residual_model_kwargs,
     ddpm_model_kwargs=ddpm_model_kwargs,
@@ -101,12 +101,17 @@ ddpm_model, mse_key = getattr(model, model_name)(
 
 ddpm_model: MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
 ddpm_model.to(device)
-mse_key: str
-# assert mse_key == "epsilon_hat"
+mse_key_pred: str
+# assert mse_key_pred == "epsilon_hat"
+
+
+# Set up training
+optim = torch.optim.Adam(ddpm_model.parameters(), lr=lr)
+
 
 if resume_path is not None:
     task.load_metadata(resume_path.replace('state.mdl', 'task_metadata.npy'))
-    trained_state_dict = torch.load(resume_path)
+    trained_state_dict = torch.load(resume_path, weights_only=True)
     if args.resume_kept_input_dims is not None:
         ddpm_model.load_state_dict(trained_state_dict, kept_input_dims=args.resume_kept_input_dims)
     else:
@@ -117,9 +122,14 @@ if resume_path is not None:
             print('warning: loading state_dict non-strictly')
             ddpm_model.load_state_dict(trained_state_dict, strict = False)
 
+    try:
+        optim.load_state_dict(torch.load(resume_path.replace('state.mdl', 'opt_state.mdl'), weights_only=True))
+    except Exception as e:
+        print(e)
 
-# Set up training
-optim = torch.optim.Adam(ddpm_model.parameters(), lr=lr)
+
+
+
 
 
 # For transparency
@@ -183,7 +193,7 @@ for t in tqdm(range(num_trials)):
         diffusion_epoch_durations=trial_information.diffusion_epoch_durations,
     )
     residual_mse = task.sample_gen.mse(
-        epsilon_hat_dict[mse_key], forward_process["epsilon"]
+        epsilon_hat_dict[mse_key_pred], forward_process[mse_key_target]
     )  # [batch, samples, time]
 
     total_loss = residual_mse.mean()
@@ -196,7 +206,17 @@ for t in tqdm(range(num_trials)):
         .sqrt()
         .mean(0)
     )  # [B,S,2] -> mean over samples [B,2] -> mag of mean [B] -> average of that <scalar>
-    total_loss = total_loss + (regularise_prep_state_weight * prep_state_loss)
+
+
+    prep_activities_to_regularise = [preparatory_state_dicts[rpai]['preparatory_trajectory'] for rpai in regularise_prep_activity_indices]
+    if regularise_diffusion_nullspace:
+        prep_activities_to_regularise.append(epsilon_hat_dict["trajectories"] @ ddpm_model.behaviour_nullspace.T)
+
+    delay_activity_loss = 0.0
+    for patr in prep_activities_to_regularise:
+        delay_activity_loss = delay_activity_loss + patr.square().sum(-1).sqrt().mean()  # [B, S, T, N] -> mags [B, S, T] -> average of that <scalar>
+
+    total_loss = total_loss + (regularise_prep_state_weight * prep_state_loss) + (delay_activity_loss * regularise_prep_activity_weight)
 
     if total_loss.isnan() or total_loss.isinf():
         torch.save(prev_state, os.path.join(save_base, f"state_saved.mdl"))
@@ -206,11 +226,16 @@ for t in tqdm(range(num_trials)):
     total_loss.backward()
     optim.step()
 
+    if t % 100_000 == 0:
+        torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.{t}.mdl"))
+        torch.save(optim.state_dict(), os.path.join(save_base, f"opt_state.{t}.mdl"))
+
     if t >= plotting_start:
         all_individual_residual_mses[t - plotting_start, :] = (
             residual_mse.detach().cpu().mean(0).mean(0)
         )
         all_prep_state_losses[t - plotting_start] = prep_state_loss.detach().cpu()
+        all_delay_activity_losses[t - plotting_start] = delay_activity_loss.detach().cpu()
 
     if (t - plotting_offset) % logging_freq == 0:
 
@@ -305,10 +330,15 @@ for t in tqdm(range(num_trials)):
         if t > plotting_start:
             axes[1, 4].plot(all_prep_state_losses[: t + 1 - plotting_start])
 
+        axes[2, 4].set_title("Delay activity square mag")
+        if t > plotting_start:
+            axes[2, 4].plot(all_delay_activity_losses[: t + 1 - plotting_start])
+
         fig.savefig(os.path.join(save_base, "latest_log.png"))
         plt.close("all")
 
         torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.mdl"))
+        torch.save(optim.state_dict(), os.path.join(save_base, f"opt_state.mdl"))
 
         if 'palimpsest' in task_name:
 

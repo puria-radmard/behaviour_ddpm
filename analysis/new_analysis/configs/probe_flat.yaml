@@ -1,0 +1,9 @@
+run_name: 'run_b3_probe_cued_diffusion_with_swap_0'
+ctd_batch_size: 1024
+num_opt_steps: 50_000
+cued_feature: probe
+include_cuing_time: true
+same_gating_across_time: true
+shared_p_misbind_over_time: true
+shared_p_swap_over_trials: true
+postcue_only_nullspace: false

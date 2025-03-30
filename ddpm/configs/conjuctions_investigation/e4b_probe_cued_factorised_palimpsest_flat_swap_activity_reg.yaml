@@ -18,7 +18,14 @@ model_config:
     seperate_output_neurons: false
 
 regularise_prep_state: true
-regularise_prep_state_weight: 0.01
+regularise_prep_state_weight: 0.001
+
+
+# New!
+regularise_prep_activity_indices: [0, 1, 2, 3]
+regularise_prep_activity_weight: 0.0005 
+regularise_diffusion_nullspace: true
+
 
 
 # Diffusion -- changed also!
@@ -32,11 +39,14 @@ logging_freq: 1000
 batch_size: 16
 num_samples: 1024
 num_trials: 10_000_000
-lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e4_probe_cued_factorised_palimpsest_flat_swap"
+lr: 0.0005
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e4b_probe_cued_factorised_palimpsest_flat_swap_activity_reg"
 
-# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e3_probe_cued_factorised_palimpsest_no_swap_long_diff_and_del_0/state.mdl"
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e4_probe_cued_factorised_palimpsest_flat_swap_0/state.mdl"
+# This flopped
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e4_probe_cued_factorised_palimpsest_flat_swap_1/state.mdl"
+
+# Going directly from the source
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e3_probe_cued_factorised_palimpsest_no_swap_long_diff_and_del_0/state.mdl"
 
 
 # Task

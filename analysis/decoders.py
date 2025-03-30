@@ -1,8 +1,12 @@
+import math
+
 import torch
 from torch import nn
 from torch import Tensor as _T
 
 from abc import ABC, abstractmethod
+
+from scipy.stats import norm
 
 
 class CrossTemporalLinearDecoder(nn.Module):
@@ -178,8 +182,12 @@ class AllemanStyleRoleReportFeatureProjector(nn.Module, ABC):
         and Wij is the projector for stumulus i when the cue is j (target vs distractor)
     """
 
-    def __init__(self, dim_K: int, dim_R: int, main_layers_sizes = None) -> None:
+    def __init__(self, dim_K: int, dim_R: int, precue_duration: int, postcue_duration: int, shared_p_misbind_over_time: bool, main_layers_sizes = None) -> None:
         super().__init__()
+
+        self.precue_duration = precue_duration
+        self.postcue_duration = postcue_duration
+
         if main_layers_sizes is None:
             main_layers_sizes = [dim_K, dim_K, dim_K]
 
@@ -192,6 +200,30 @@ class AllemanStyleRoleReportFeatureProjector(nn.Module, ABC):
         main_layers.extend([nn.Linear(main_layers_sizes[-1], dim_K)])
         self.main_layers = nn.Sequential(*main_layers)
 
+        self.shared_p_misbind_over_time = shared_p_misbind_over_time
+        if shared_p_misbind_over_time:
+            self.p_misbind_raw = torch.nn.Parameter(0.0 * torch.ones(1).cuda())
+            self.p_post_cue_errors_raw = torch.nn.Parameter(0.0 * torch.ones(3).cuda())
+        else:
+            self.p_misbind_raw = torch.nn.Parameter(0.0 * torch.ones(precue_duration).cuda())
+            self.p_post_cue_errors_raw = torch.nn.Parameter(0.0 * torch.ones(precue_duration, 3).cuda())
+
+        self.mode_variance_raw = torch.nn.Parameter(torch.ones(dim_R).cuda())
+
+    @property
+    def p_misbind(self) -> _T:
+        if self.shared_p_misbind_over_time:
+            return self.p_misbind_raw.sigmoid().unsqueeze(0).expand(1, self.precue_duration)
+        else:
+            return self.p_misbind_raw.sigmoid().unsqueeze(0)
+
+    @property
+    def p_post_cue_errors(self) -> _T:
+        if self.shared_p_misbind_over_time:
+            return self.p_post_cue_errors_raw.softmax(0).unsqueeze(1).unsqueeze(2).expand(3, 1, self.postcue_duration)
+        else:
+            raise NotImplementedError
+
     def get_mixture_model_spline_means(self, report_features: _T) -> _T:
         assert len(report_features.shape) == 3, f"Expected report_features of shape [B, N, Dr], got {report_features.shape}"
         return self.main_layers(report_features)
@@ -200,6 +232,14 @@ class AllemanStyleRoleReportFeatureProjector(nn.Module, ABC):
         spline_means = self.get_mixture_model_spline_means(report_features)                 # [B, N, 2] -> [B, N, K]
         gating_matrix = self.generate_gating_matrix(probe_features, 'precued')              # [B, T, N, R, K]
         return torch.einsum('bnk,btnrk->btnr', spline_means, gating_matrix).sum(-2)         # [B, T, R]
+
+    @staticmethod
+    def get_gaussian_llh(response: _T, mode_mean: _T, variance: _T) -> _T:
+        log_scaled_sq_residual = - 0.5 * ((response - mode_mean).square() / variance).sum(-1)
+        det_term = - 0.5 * variance.log().sum(-1)
+        pi_term = - 0.5 * variance.shape[-1] * math.log(2 * math.pi)
+        llh = log_scaled_sq_residual + pi_term + det_term
+        return llh
 
     @abstractmethod
     def get_mixture_model_means_postcue(self, report_features: _T, probe_features: _T, cued_indices: _T):
@@ -222,7 +262,7 @@ class AllemanStyleRoleReportFeatureProjector(nn.Module, ABC):
         # import pdb; pdb.set_trace()
 
         # return cued_mean_component + uncued_mean_component
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def generate_gating_matrix(self, probe_features: _T, gating_type: str) -> _T:
@@ -243,15 +283,17 @@ class CuedIndexDependentReportFeatureProjector(AllemanStyleRoleReportFeatureProj
     Here, we just do what Alleman did, and learn Wu, Wl, Wlt, Wud, Wut, Wld
         as seperate dim_R x dim_K matrices, for each timestep
     """
-    def __init__(self, dim_K: int, dim_R: int, precue_duration: int, postcue_duration: int, main_layers_sizes=None) -> None:
-        super().__init__(dim_K, dim_R, main_layers_sizes)
+    def __init__(self, dim_K: int, dim_R: int, precue_duration: int, postcue_duration: int, same_gating_across_time: bool, shared_p_misbind_over_time: bool, main_layers_sizes=None) -> None:
+        super().__init__(dim_K, dim_R, precue_duration, postcue_duration, shared_p_misbind_over_time, main_layers_sizes)
 
-        self.precue_duration = precue_duration
-        self.postcue_duration = postcue_duration
+        self.same_gating_across_time = same_gating_across_time  # Move to super init
 
         self.gating = nn.ModuleDict()
-        for name in ['precued_matrix', 'cued_matrix', 'uncued_matrix']:
-            self.gating[name] = nn.Embedding(num_embeddings=2, embedding_dim=dim_K * dim_R * precue_duration)
+        gating_matrix_size = dim_K * dim_R if same_gating_across_time else dim_K * dim_R * precue_duration
+        self.gating['precued_matrix'] = nn.Embedding(num_embeddings=2, embedding_dim=gating_matrix_size)
+        gating_matrix_size = dim_K * dim_R if same_gating_across_time else dim_K * dim_R * postcue_duration
+        for name in ['cued_matrix', 'uncued_matrix']:
+            self.gating[name] = nn.Embedding(num_embeddings=2, embedding_dim=gating_matrix_size)
 
     def generate_gating_matrix(self, probe_features: _T, gating_type: str) -> _T:
         """
@@ -262,9 +304,16 @@ class CuedIndexDependentReportFeatureProjector(AllemanStyleRoleReportFeatureProj
         """
         assert len(probe_features.shape) == 1, f"Expected probe_features of shape [B], just indexes of which item was cued, got {probe_features.shape}"
         if gating_type == 'precued':
+            
             probe_features = probe_features.int()
-            upper_matrix = self.gating['precued_matrix'](torch.zeros_like(probe_features)).reshape(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
-            lower_matrix = self.gating['precued_matrix'](torch.ones_like(probe_features)).reshape(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
+            upper_matrix = self.gating['precued_matrix'](torch.zeros_like(probe_features))
+            lower_matrix = self.gating['precued_matrix'](torch.ones_like(probe_features))
+            if self.same_gating_across_time:
+                upper_matrix = upper_matrix.reshape(probe_features.shape[0], self.dim_R, self.dim_K).unsqueeze(-3).expand(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
+                lower_matrix = lower_matrix.reshape(probe_features.shape[0], self.dim_R, self.dim_K).unsqueeze(-3).expand(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
+            else:
+                upper_matrix = upper_matrix.reshape(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
+                lower_matrix = lower_matrix.reshape(probe_features.shape[0], self.precue_duration, self.dim_R, self.dim_K)
             return torch.stack([upper_matrix, lower_matrix], dim = 2)
 
         if gating_type == 'precued':
@@ -297,24 +346,39 @@ class CuedIndexDependentReportFeatureProjector(AllemanStyleRoleReportFeatureProj
             output [B, T, R]
         """
         
-        import pdb; pdb.set_trace()
-        assert (probe_features == cued_indices).all()
+        assert (probe_features == cued_indices).all() or (probe_features == 1 - cued_indices).all()
 
         spline_means = self.get_mixture_model_spline_means(report_features)                 # [B, N, 2] -> [B, N, K]
         batch_size = spline_means.shape[0]
 
+
+        upper_cued_mask = (cued_indices == 0).bool()
+        lower_cued_mask = (cued_indices == 1).bool()
+        assert torch.logical_xor(upper_cued_mask, lower_cued_mask).all()
+
         upper_gating_matrices = torch.zeros(batch_size, self.postcue_duration, self.dim_R, self.dim_K, device = report_features.device)
         lower_gating_matrices = torch.zeros(batch_size, self.postcue_duration, self.dim_R, self.dim_K, device = report_features.device)
 
-        upper_cued_mask = (probe_features == 0).bool()
-        lower_cued_mask = (probe_features == 1).bool()
-        assert torch.logical_and(upper_cued_mask, lower_cued_mask).all()
+        # XXX for the love of God fix this
+        if self.same_gating_across_time:
 
-        upper_gating_matrices[upper_cued_mask] = self.gating['cued_matrix'](torch.zeros_like(upper_gating_matrices[upper_cued_mask])).reshape(*upper_gating_matrices[upper_cued_mask].shape)
-        upper_gating_matrices[lower_cued_mask] = self.gating['uncued_matrix'](torch.zeros_like(upper_gating_matrices[lower_cued_mask])).reshape(*upper_gating_matrices[lower_cued_mask].shape)
+            target_shape = self.dim_R, self.dim_K
+            
+            upper_gating_matrices[upper_cued_mask] = self.gating['cued_matrix'](torch.zeros(*upper_gating_matrices[upper_cued_mask].shape[:-2], device = report_features.device).int()).reshape(*upper_gating_matrices[upper_cued_mask].shape[:-2], *target_shape)
+            upper_gating_matrices[lower_cued_mask] = self.gating['uncued_matrix'](torch.zeros(*upper_gating_matrices[lower_cued_mask].shape[:-2], device = report_features.device).int()).reshape(*upper_gating_matrices[lower_cued_mask].shape[:-2], *target_shape)
 
-        lower_gating_matrices[lower_cued_mask] = self.gating['cued_matrix'](torch.zeros_like(lower_gating_matrices[lower_cued_mask])).reshape(*lower_gating_matrices[lower_cued_mask].shape)
-        lower_gating_matrices[upper_cued_mask] = self.gating['uncued_matrix'](torch.zeros_like(lower_gating_matrices[upper_cued_mask])).reshape(*lower_gating_matrices[upper_cued_mask].shape)
+            lower_gating_matrices[lower_cued_mask] = self.gating['cued_matrix'](torch.ones(*lower_gating_matrices[lower_cued_mask].shape[:-2], device = report_features.device).int()).reshape(*lower_gating_matrices[lower_cued_mask].shape[:-2], *target_shape)
+            lower_gating_matrices[upper_cued_mask] = self.gating['uncued_matrix'](torch.ones(*lower_gating_matrices[upper_cued_mask].shape[:-2], device = report_features.device).int()).reshape(*lower_gating_matrices[upper_cued_mask].shape[:-2], *target_shape)
+
+        else:
+
+            target_shape = self.postcue_duration, self.dim_R, self.dim_K            
+
+            upper_gating_matrices[upper_cued_mask] = self.gating['cued_matrix'](torch.zeros(*upper_gating_matrices[upper_cued_mask].shape[:-3], device = report_features.device).int()).reshape(*upper_gating_matrices[upper_cued_mask].shape[:-3], *target_shape)
+            upper_gating_matrices[lower_cued_mask] = self.gating['uncued_matrix'](torch.zeros(*upper_gating_matrices[lower_cued_mask].shape[:-3], device = report_features.device).int()).reshape(*upper_gating_matrices[lower_cued_mask].shape[:-3], *target_shape)
+
+            lower_gating_matrices[lower_cued_mask] = self.gating['cued_matrix'](torch.ones(*lower_gating_matrices[lower_cued_mask].shape[:-3], device = report_features.device).int()).reshape(*lower_gating_matrices[lower_cued_mask].shape[:-3], *target_shape)
+            lower_gating_matrices[upper_cued_mask] = self.gating['uncued_matrix'](torch.ones(*lower_gating_matrices[upper_cued_mask].shape[:-3], device = report_features.device).int()).reshape(*lower_gating_matrices[upper_cued_mask].shape[:-3], *target_shape)
 
         stacked_gating_matices = torch.stack([upper_gating_matrices, lower_gating_matrices], dim = 2)
 
@@ -335,25 +399,45 @@ class ProbeFeatureDependentReportFeatureProjector(AllemanStyleRoleReportFeatureP
         self.uncued_layers(probe_features) -> Like their Wd, sized (N x K)
     """
 
-    def __init__(self, dim_K: int, dim_R: int, main_layers_sizes=None, gate_layers_sizes = None) -> None:
-        super().__init__(dim_K, dim_R, main_layers_sizes)
-
-        raise Exception('Make time dependent!')
+    def __init__(self, dim_K: int, dim_R: int, precue_duration: int, postcue_duration: int, same_gating_across_time: bool, shared_p_misbind_over_time: bool, main_layers_sizes=None, gate_layers_sizes=None) -> None:
+        super().__init__(dim_K, dim_R, precue_duration, postcue_duration, shared_p_misbind_over_time, main_layers_sizes)
+        
+        self.same_gating_across_time = same_gating_across_time  # Move to super init
 
         if gate_layers_sizes is None:
-            gate_layers_sizes = [dim_K * dim_R]
+            gate_layers_sizes = [dim_K * dim_R, dim_K * dim_R]
+
+        gating_matrix_size = dim_K * dim_R if same_gating_across_time else dim_K * dim_R * precue_duration
 
         self.gating = nn.ModuleDict()
         for name in ['precued_layers', 'cued_layers', 'uncued_layers']:
             gate_layers = [nn.Linear(2, gate_layers_sizes[0]), nn.Sigmoid()]
             for h_in, h_out in zip(gate_layers_sizes[:-1], gate_layers_sizes[1:]):
                 gate_layers.extend([nn.Linear(h_in, h_out), nn.Sigmoid()])
-            gate_layers.extend([nn.Linear(gate_layers_sizes[-1], dim_R * dim_K)])
+            gate_layers.extend([nn.Linear(gate_layers_sizes[-1], gating_matrix_size)])
             self.gating[name] = nn.Sequential(*gate_layers)
 
     def generate_gating_matrix(self, probe_features: _T, gating_type: str) -> _T:
+        """
+        Output is [B, T, N, R, K]
+
+        if gating_type == 'precued': output[b,t,n] gives W(probe_feature[b,n]; t)
+        """
+
         assert len(probe_features.shape) == 3, f"Expected probe_features of shape [B, N, Dr], got {probe_features.shape}"
-        flat_matrix = self.gating[gating_type + '_layers'](probe_features)
-        return flat_matrix.reshape(*flat_matrix.shape[:-1], self.dim_R, self.dim_K)
+        flat_matrices = self.gating[gating_type + '_layers'](probe_features)      # [B, N, TRK or RK]
+
+        if self.same_gating_across_time:
+            matrices = flat_matrices.reshape(*flat_matrices.shape[:2], self.dim_R, self.dim_K)
+            matrices = matrices.unsqueeze(-4).expand(probe_features.shape[0], self.precue_duration, probe_features.shape[1], self.dim_R, self.dim_K)
+            return matrices
+
+        else:
+            matrices = flat_matrices.reshape(*flat_matrices.shape[:2], self.precue_duration, self.dim_R, self.dim_K)
+            matrices = matrices.transpose(-3, -4)
+            return matrices
+    
+    def get_mixture_model_means_postcue(self, report_features: _T, probe_features: _T, cued_indices: _T):
+        raise NotImplementedError
 
 

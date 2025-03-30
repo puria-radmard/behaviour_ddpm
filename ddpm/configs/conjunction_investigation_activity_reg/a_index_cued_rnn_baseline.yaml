@@ -1,0 +1,62 @@
+# 20250322
+
+# Model
+model_name: rnn_baseline_delayed_index_cue
+model_config:
+  recurrence_hidden_layers: [32]
+  time_embedding_size: 16
+  sample_ambient_dim: 32
+  indexing_embeddings_same_slots: false
+  residual_model_kwargs:
+    nonlin_first: false   # Keep this off!!
+  ddpm_model_kwargs:
+    stabilise_nullspace: true
+    seperate_output_neurons: false
+    use_leaky: false
+  num_items: 2
+
+
+regularise_prep_state: true
+regularise_prep_state_weight: 0.01
+
+
+# New!
+regularise_prep_activity_indices: [0, 1, 2, 3]
+regularise_prep_activity_weight: 0.0005 
+regularise_diffusion_nullspace: true
+
+
+# Diffusion
+ultimate_sigma2: 0.15
+starting_sigma2: 0.15
+num_timesteps: 40
+
+
+
+# Training/logging
+logging_freq: 1000
+batch_size: 32
+num_samples: 1024
+num_trials: 10_000_000
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_curriculum_activity_reg_20250322/run_a_index_cued_rnn_baseline"
+
+
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_c5d_index_cued_long_diff_and_del_rnn_baseline_0/state.mdl"
+
+
+
+# Task
+task_name: delayed_indexing_cue_fixed_probability_vectoral
+task_config:
+
+  sample_size: 2
+  num_items: 2
+  correct_probability: 1.0
+  residual_in_behaviour_plane_only: false
+  sample_radius: 2.5
+
+  stimulus_exposure_duration: 5
+  pre_index_delay_duration: [15, 15]
+  index_duration: 5
+  post_index_delay_duration: 1

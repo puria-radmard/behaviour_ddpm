@@ -27,8 +27,19 @@ from purias_utils.multiitem_working_memory.util.circle_utils import (
 
 
 
-def generate_stimulus_features(N_items: int, batch_size: int, excl_max_items: float) -> Dict[str, _T]:
+def generate_stimulus_features(N_items: int, batch_size: int, excl_max_items: float, *_, feature_names = ['probe', 'report']) -> Dict[str, _T]:
     "all are [batch_size, num_items, 1/2]"
+    all_features = {f'{fn}_features': [] for fn in feature_names}
+    for bs in range(batch_size):
+        for k in all_features.keys():
+            all_features[k].append(generate_circular_feature_list(N_items, torch.pi / excl_max_items))
+    all_cart_features = {}
+    for k in all_features.keys():
+        all_features[k] = torch.tensor(all_features[k])
+        all_cart_features[f'{k}_cart'] = torch.stack(polar2cart(1.0, all_features[k]), -1)
+    return dict(**all_features, **all_cart_features)
+
+
     all_probe_features, all_report_features = [], []
     for bs in range(batch_size):
         all_probe_features.append(generate_circular_feature_list(N_items, torch.pi / excl_max_items))

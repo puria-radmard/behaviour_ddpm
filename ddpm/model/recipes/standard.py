@@ -30,7 +30,7 @@ def standard_vectoral(
         time_embedding_size,
         device,
     )
-    return ddpm_model, "epsilon_hat"
+    return ddpm_model, "epsilon_hat", "epsilon"
 
 
 def rnn_baseline_vectoral(
@@ -96,7 +96,7 @@ def teacher_forced_vectoral(
         device=device,
         **ddpm_model_kwargs
     )
-    mse_key = "epsilon_hat"
+    mse_key = "epsilon_hat", "epsilon"
     return ddpm_model, mse_key
 
 
@@ -130,7 +130,7 @@ def teacher_forced_vectoral_with_prep_time(
         device=device,
         **ddpm_model_kwargs
     )
-    mse_key = "epsilon_hat"
+    mse_key = "epsilon_hat", "epsilon"
     return ddpm_model, mse_key
 
 
@@ -161,4 +161,4 @@ def standard_vectoral_in_images_out(
         time_embedding_size,
         device,
     )
-    return ddpm_model, "epsilon_hat"
+    return ddpm_model, "epsilon_hat", "epsilon"
