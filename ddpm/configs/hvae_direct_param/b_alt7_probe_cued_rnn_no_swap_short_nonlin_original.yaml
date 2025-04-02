@@ -1,17 +1,18 @@
 # 20250322
 
 # Model
-model_name: hvae_bounceback_delayed_probe_cue_factorised_palimpsest_representation
+model_name: hvae_delayed_probe_cue_factorised_palimpsest_representation
 model_config:
+  recurrence_hidden_layers: [50]    # back to original size...
   time_embedding_size: 16
-  sample_ambient_dim: 32
-  feature_projection_sizes: [5, 5]  # network input size is 25
+  sample_ambient_dim: 50
+  feature_projection_sizes: [6, 6]  # network input size is 36
+  residual_model_kwargs:
+    nonlin_first: true              # Try this again...
   ddpm_model_kwargs:
     train_as_rnn: true
     noise_scaler: 'nat'
     seperate_output_neurons: false
-    primary_euler_alpha: 0.1
-    bounce_euler_alpha: 'instant'
 
 
 
@@ -38,7 +39,11 @@ batch_size: 32
 num_samples: 1024
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_direct_param_20250327/run_b_alt6_probe_cued_rnn_no_swap_short_nonlin"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_direct_param_20250327/run_b_alt7_probe_cued_rnn_no_swap_short_nonlin_original"
+
+
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/ddpm_conjuctions_investigation_20250317/run_e3_probe_cued_factorised_palimpsest_no_swap_long_diff_and_del_0/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_direct_param_20250327/run_b_alt7_probe_cued_rnn_no_swap_short_nonlin_original_1/state.mdl"
 
 
 # Task

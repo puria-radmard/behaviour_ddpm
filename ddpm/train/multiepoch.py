@@ -11,6 +11,8 @@ import numpy as np
 from tqdm import tqdm
 from collections import deque
 
+from ddpm.model import BouncePopulationResidualModel
+
 from purias_utils.util.arguments_yaml import ConfigNamepace
 
 from ddpm.model.main.multiepoch import (
@@ -121,6 +123,10 @@ if resume_path is not None:
             print(e)
             print('warning: loading state_dict non-strictly')
             ddpm_model.load_state_dict(trained_state_dict, strict = False)
+            if isinstance(ddpm_model.residual_model, BouncePopulationResidualModel):
+                residual_model_state_dict = {k.removeprefix('residual_model.'): v for k, v in trained_state_dict.items() if k.startswith('residual_model.')}
+                ddpm_model.residual_model.load_state_dict(state_dict=residual_model_state_dict)
+                print('loaded BouncePopulationResidualModel from existing non bounce!')
 
     try:
         optim.load_state_dict(torch.load(resume_path.replace('state.mdl', 'opt_state.mdl'), weights_only=True))

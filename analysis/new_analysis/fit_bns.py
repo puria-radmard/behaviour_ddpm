@@ -13,7 +13,8 @@ from purias_utils.multiitem_working_memory.util.circle_utils import rectify_angl
 from purias_utils.error_modelling_torus.non_parametric_error_model.setup_utils import setup_model_whole
 
 # base_dir_name = 'ddpm_curriculum_activity_reg_20250322'
-base_dir_name = 'hvae_direct_param_20250327'
+# base_dir_name = 'hvae_direct_param_20250327'
+base_dir_name = 'hvae_with_bounceback_20250330'
 
 
 analysis_args = ConfigNamepace.from_yaml_path(sys.argv[1], strict_access = True)
@@ -30,7 +31,7 @@ run_name = analysis_args.run_name
 
 device = 'cuda'
 _, task, ddpm_model, _, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/args.yaml', device)
-num_neurons = ddpm_model.sample_ambient_dim
+num_neurons = ddpm_model.sample_ambient_dims[-1]
 ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/state.mdl'))
 
 ddpm_model.eval()

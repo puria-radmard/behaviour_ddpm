@@ -36,18 +36,11 @@ class VectoralResidualModel(nn.Module):
         recurrence_layers = self.generate_layers(recurrence_hidden_layers)
         self.layers = nn.ModuleList(recurrence_layers)  # R^N -> R^N
 
-    def generate_layers(self, recurrence_hidden_layers) -> List[nn.Module]:
+    def generate_layers(self, recurrence_hidden_layers, include_time_and_input = True) -> List[nn.Module]:
         all_layer_sizes = recurrence_hidden_layers + [self.state_space_size]
         recurrence_layers = []
-        recurrence_layers.extend(
-            [
-                nn.Linear(
-                    self.state_space_size + self.time_embedding_size + self.input_size,
-                    all_layer_sizes[0],
-                ),
-                nn.Softplus(),
-            ]
-        )  # 1 to include time also!
+        total_input_size = self.state_space_size + self.time_embedding_size + self.input_size if include_time_and_input else self.state_space_size
+        recurrence_layers.extend([nn.Linear(total_input_size,all_layer_sizes[0]), nn.Softplus()])  # 1 to include time also!
         for i, op_s in enumerate(all_layer_sizes[1:]):
             recurrence_layers.extend(
                 [nn.Linear(all_layer_sizes[i], op_s), nn.Softplus()]
@@ -84,7 +77,7 @@ class VectoralResidualModel(nn.Module):
         )
         return x_concat
 
-    def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T, *_, override_layers: Optional[nn.Module]) -> _T:
+    def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
         """
         x of shape [..., T, state_space_size]
         t_embeddings_schedule of shape [T, time_emb_size]
@@ -99,8 +92,7 @@ class VectoralResidualModel(nn.Module):
         if self.nonlin_first:
             x = torch.nn.functional.softplus(x)
         x = self.concatenate_with_time_and_input(x, t_embeddings_schedule, input_vector)
-        layers = override_layers or self.layers
-        for layer in layers:
+        for layer in self.layers:
             x = layer(x)
         return x
 
@@ -113,22 +105,33 @@ class BouncePopulationResidualModel(VectoralResidualModel):
     
     For now assume recurrence layers are the same, and all is 'biological'
     """
-    def __init__(self, state_space_size: int, input_size: int, time_embedding_size: int,) -> None:
+    def __init__(self, state_space_size: int, input_size: int, time_embedding_size: int) -> None:
         super().__init__(state_space_size, [], input_size, time_embedding_size, nonlin_first = True)
-        import pdb; pdb.set_trace(header = 'make sure everything worked!')
-        self.bounceback_layers = self.generate_layers([])
+        self.bounceback_layers = nn.ModuleList(self.generate_layers([], include_time_and_input=False))
 
     def forward(self, x: _T, t_embeddings_schedule: _T, input_vector: _T) -> _T:
         primary_to_bounce = super().forward(x[...,0,:], t_embeddings_schedule, input_vector)
-        bounce_to_primary = super().forward(x[...,1,:], t_embeddings_schedule, input_vector, override_layers = self.bounceback_layers)
-        import pdb; pdb.set_trace(header = 'check shape!')
-        return torch.stack([bounce_to_primary, primary_to_bounce], dim=-2)    # reversed!
+        
+        # bounce_to_primary = super().forward(x[...,1,:], t_embeddings_schedule, input_vector, override_layers = self.bounceback_layers)
+        if self.nonlin_first:
+            bounce_to_primary = torch.nn.functional.softplus(x[...,1,:])
+        else:
+            raise AttributeError
+        for layer in self.bounceback_layers:
+            bounce_to_primary = layer(bounce_to_primary)
+
+        return torch.stack([bounce_to_primary, primary_to_bounce], dim=-2)    # reversed! [..., T, 2, D]
 
     def load_state_dict(self, state_dict: Mapping[str, Any], strict: bool = True, assign: bool = False):
         try:
             return super().load_state_dict(state_dict, strict, assign)
-        except:
-            import pdb; pdb.set_trace(header = 'trying to load VectoralResidualModel weights into BouncePopulationResidualModel should be allowed!')
+        except RuntimeError:
+            print('LOADING VectoralResidualModel WEIGHTS INTO BouncePopulationResidualModel')
+            assert set(state_dict.keys()) == {"layers.2.weight", "layers.2.bias", "layers.0.weight", "layers.0.bias"}
+            state_dict['bounceback_layers.0.weight'] = state_dict.pop('layers.2.weight')[:,:self.state_space_size]
+            state_dict['bounceback_layers.0.bias'] = state_dict.pop('layers.2.bias')
+            assert strict and not assign
+            return super(BouncePopulationResidualModel, self).load_state_dict(state_dict, strict, assign)
     
 
 

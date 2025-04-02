@@ -268,7 +268,7 @@ class ScoreMatchingMultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess
     ) -> Tuple[List[Dict[str, _T]], Dict[str, _T]]:
         
         # XXX: this should be patched, alongside the assert statement in DiagonalGaussianMixtureDistributionInformation.__init__
-        # import pdb; pdb.set_trace(header = 'find a better a way to find out batch_shape here!')
+        import pdb; pdb.set_trace(header = 'find a better a way to find out batch_shape here!')
         batch_shape = diffusion_network_inputs[0].shape[:2] # i.e. assume shaoe is [batch, sample, <shape>]
 
         assert len(prep_network_inputs) == len(prep_epoch_durations)

@@ -1,10 +1,10 @@
 from ddpm.model.main.base import *
 from ddpm.model.residual import *
 from ddpm.model.input import *
-from ddpm.model.main.scorematching import (
-    ScoreMatchingMultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
-    ScoreMatchingLinearSubspaceTeacherForcedDDPMReverseProcess
-)
+#from ddpm.model.main.scorematching import (
+#    ScoreMatchingMultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
+#    ScoreMatchingLinearSubspaceTeacherForcedDDPMReverseProcess
+#)
 
 
 

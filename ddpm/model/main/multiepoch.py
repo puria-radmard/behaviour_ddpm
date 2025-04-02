@@ -239,7 +239,7 @@ class MultiPreparatoryBounceNetworkHVAEReverseProcess(
         self,
         seperate_output_neurons: bool,
         primary_euler_alpha: float,
-        bounce_euler_alpha: float | Literal['instant'],
+        bounce_euler_alpha: float,
         sample_ambient_dim: int,
         sample_shape: List[int],
         sigma2xt_schedule: _T,
@@ -247,6 +247,8 @@ class MultiPreparatoryBounceNetworkHVAEReverseProcess(
         input_model: InputModelBlock,
         time_embedding_size: int,
         noise_scaler: float,
+        bounce_noise_scalar: Optional[float],
+        primary_noise_scalar: Optional[float],
         train_as_rnn: bool,
         device="cuda",
         **kwargs
@@ -255,6 +257,7 @@ class MultiPreparatoryBounceNetworkHVAEReverseProcess(
         super().__init__(
             # num_prep_steps = None,
             # network_input_during_diffusion = None,
+            stabilise_nullspace = True,
             seperate_output_neurons = seperate_output_neurons,
             primary_euler_alpha=primary_euler_alpha,
             bounce_euler_alpha=bounce_euler_alpha,
@@ -265,6 +268,8 @@ class MultiPreparatoryBounceNetworkHVAEReverseProcess(
             input_model = input_model,
             time_embedding_size = time_embedding_size,
             noise_scaler = noise_scaler,
+            bounce_noise_scalar = bounce_noise_scalar,
+            primary_noise_scalar = primary_noise_scalar,
             train_as_rnn = train_as_rnn,
             device = device,
         )

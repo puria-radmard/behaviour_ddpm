@@ -259,7 +259,7 @@ class AllemanStyleRoleReportFeatureProjector(nn.Module, ABC):
         # uncued_mean_components = torch.einsum('bnk,bnrk->bnr', spline_means, uncued_gating_matrix)
         # uncued_mean_component = uncued_mean_components.sum(1)
 
-        # import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
 
         # return cued_mean_component + uncued_mean_component
         raise NotImplementedError

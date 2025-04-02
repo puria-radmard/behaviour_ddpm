@@ -54,7 +54,7 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
         else:
             raise ValueError(noise_scaler)
 
-    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, noise_scaler: float, *_, override_euler_alpha: Optional[float | str]):
+    def denoise_one_step(self, t_idx: int, x_t_plus_1: _T, predicted_residual: _T, noise_scaler: float, *_, override_euler_alpha: Optional[float] = None):
         """
         predicted_residual (misnomer) now just acts as the integration term in continuous time, i.e. f(...) in
 
@@ -62,19 +62,15 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
 
         using HVAE time convention => x_{t-1} = (1-euler_alpha) x_t + euler_alpha (f(x_t, s_t, t) + v_t \eta)
         """
-        if override_euler_alpha == 'instant':
-            x_t = predicted_residual
+        euler_alpha = override_euler_alpha if override_euler_alpha is not None else self.euler_alpha
 
-        else:
-            euler_alpha = override_euler_alpha if override_euler_alpha is not None else self.euler_alpha
+        noise = noise_scaler * torch.randn_like(x_t_plus_1)
+        scaled_noise = noise * self.noise_scaler_schedule[-t_idx]
 
-            noise = noise_scaler * torch.randn_like(x_t_plus_1)
-            scaled_noise = noise * self.noise_scaler_schedule[-t_idx]
+        leaky_term = (1 - euler_alpha) * x_t_plus_1
+        integration_term = euler_alpha * predicted_residual
 
-            leaky_term = (1 - euler_alpha) * x_t_plus_1
-            integration_term = euler_alpha * predicted_residual
-
-            x_t = leaky_term + integration_term + scaled_noise
+        x_t = leaky_term + integration_term + scaled_noise
             
         fake_early_x0_pred = torch.ones_like(x_t) * torch.nan
 
@@ -101,7 +97,12 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
             scaled_base_samples = self.reshaped_base_samples_scaler_schedule[*[None]*num_extra_dim] * noising_dict['x_t']
             scaled_residual = self.reshaped_residual_scaler_schedule[*[None]*num_extra_dim] * noising_dict['epsilon']
             one_step_denoise_mean = scaled_base_samples - scaled_residual       # mu_q      [..., T, <shape samples>]
-            kernel_target = (one_step_denoise_mean - (1 - self.euler_alpha) * noising_dict['x_t']) / self.euler_alpha
+            
+            try:
+                kernel_target = (one_step_denoise_mean - (1 - self.euler_alpha) * noising_dict['x_t']) / self.euler_alpha
+            except AttributeError:
+                kernel_target = (one_step_denoise_mean - (1 - self.primary_euler_alpha) * noising_dict['x_t']) / self.primary_euler_alpha
+            
             noising_dict['kernel_target'] = kernel_target
         return noising_dict
 

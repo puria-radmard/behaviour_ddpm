@@ -167,7 +167,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
                 *self.sample_ambient_dims,
             ), f"Expected initial_state shape to end with {self.sample_ambient_dims} but got {tuple(initial_state.shape)}"
 
-        one_step_denoising = initial_state.unsqueeze(-2)  # [..., 1, ambient space dim]
+        one_step_denoising = initial_state.unsqueeze(-len(self.sample_ambient_dims)-1)  # [..., 1, ambient space dim]
         all_predicted_residuals = []
         all_subspace_trajectories = []
         all_trajectories = []
@@ -194,7 +194,6 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             subspace_activity = self.extract_subspace(one_step_denoising)
             all_subspace_trajectories.append(subspace_activity)
             
-            import pdb; pdb.set_trace(header = 'check shapes here for bounce network!')
             all_trajectories.append(one_step_denoising)
 
         epsilon_hat = torch.concat(
@@ -211,12 +210,10 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             all_trajectories, num_extra_dim
         )
 
-        import pdb; pdb.set_trace(header = 'check shapes here for bounce network!')
-
         return {
-            "epsilon_hat": epsilon_hat,
-            "subspace_trajectories": subspace_trajectories,
-            "trajectories": trajectories,
+            "epsilon_hat": epsilon_hat,                         # [..., T, Dx]
+            "subspace_trajectories": subspace_trajectories,     # [..., T, Dx]
+            "trajectories": trajectories,                       # [..., T, <shape z>]
         }
 
     def generate_samples(
@@ -262,7 +259,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
                 * self.base_std
             )
         else:
-            samples_shape = base_samples.shape[:-1]
+            samples_shape = base_samples.shape[:-len(self.sample_ambient_dims)]
             assert tuple(base_samples.shape) == (
                 *samples_shape,
                 *self.sample_ambient_dims,
@@ -296,25 +293,20 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             
             early_x0_pred = self.extract_subspace(early_embedded_x0_pred) # [..., 1, sample dim]
 
-            import pdb; pdb.set_trace(header = 'check shapes here for bounce network!')
-
             embedded_sample_trajectory.append(base_samples.detach())
             early_x0_preds.append(early_x0_pred.detach())
             all_predicted_residual.append(predicted_residual.detach())
 
         embedded_sample_trajectory = torch.concat(
-            embedded_sample_trajectory, -2
+            embedded_sample_trajectory, -len(self.sample_ambient_dims)-1
         )  # [..., T, sample_ambient_dim]
-        
+
+
         sample_trajectory = self.extract_subspace(embedded_sample_trajectory)   # [..., T, dim x]
         early_x0_preds = torch.concat(early_x0_preds, -2)  # [..., T, dim x]
 
-        all_predicted_residual = self.extract_subspace(
-            torch.concat(all_predicted_residual, -2)
-        )
-        new_samples = self.extract_subspace(base_samples.squeeze(-2).detach())
-
-        import pdb; pdb.set_trace(header = 'check shapes here for bounce network!')
+        all_predicted_residual = self.extract_subspace(torch.concat(all_predicted_residual, -len(self.sample_ambient_dims)-1))
+        new_samples = self.extract_subspace(base_samples.squeeze(-len(self.sample_ambient_dims)-1).detach())
 
         return {
             "end_state": base_samples.squeeze(len(samples_shape)),
@@ -406,7 +398,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
             assert override_initial_state.shape == tuple(
                 [*batch_shape, *self.sample_ambient_dims]
             )
-            initial_state = override_initial_state.unsqueeze(-2)
+            initial_state = override_initial_state.unsqueeze(-len(self.sample_ambient_dims)-1)
 
         input_vectors = self.input_model(network_input, num_steps)
 
@@ -424,18 +416,13 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
             )
             preparatory_trajectory.append(recent_state)
 
-        import pdb; pdb.set_trace(header = 'check shapes here for bounce network!')
-
-        preparatory_trajectory = torch.concat(
-            preparatory_trajectory, -2
-        )  # Reverse time!                          # XXX: needs fixing for bounce network!
+        preparatory_trajectory = torch.concat(preparatory_trajectory, len(batch_shape))  # Reverse time!
+        last_preparatory_trajectory_slice = preparatory_trajectory[*[slice(None) for _ in batch_shape], -1, :]
 
         return {
             "preparatory_trajectory": preparatory_trajectory,
-            "postprep_state": preparatory_trajectory[
-                ..., -1, :
-            ],  # Again, reverse time, so final state here will be first state for the denoising
-            "postprep_base_samples": self.extract_subspace(preparatory_trajectory[..., -1, :])      # XXX: needs fixing for bounce network!
+            "postprep_state": last_preparatory_trajectory_slice,  # Again, reverse time, so final state here will be first state for the denoising
+            "postprep_base_samples": self.extract_subspace(last_preparatory_trajectory_slice)      
         }
 
     def residual(

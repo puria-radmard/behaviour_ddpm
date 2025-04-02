@@ -153,6 +153,57 @@ def hvae_delayed_index_cue(
 
 
 
+def hvae_bounceback_delayed_index_cue(
+    prep_sensory_shape,
+    underlying_sensory_shape,
+    sample_shape,
+    num_items,
+    sample_ambient_dim,
+    time_embedding_size,
+    sigma2x_schedule,
+    indexing_embeddings_same_slots,
+    device,
+    residual_model_kwargs,
+    ddpm_model_kwargs,
+):
+    assert all(
+        [len(psp) == 1 for psp in prep_sensory_shape]
+    )
+    assert len(sample_shape) == 1 and len(underlying_sensory_shape) == 1
+    under_input_model = InputModelBlock(
+        underlying_sensory_shape, underlying_sensory_shape[0], device=device
+    )  # i.e. sensory (and delay) epochs for actual stimulus information...
+    input_model = AllowIndexInputModelBlock(
+        under_input_model, num_items, indexing_embeddings_same_slots, device
+    )  # ... cueing epoch for indexing
+    residual_model = BouncePopulationResidualModel(
+        sample_ambient_dim,
+        input_model.network_input_size,
+        time_embedding_size,
+        **residual_model_kwargs
+    )
+    ddpm_model = MultiPreparatoryBounceNetworkHVAEReverseProcess(
+        sample_ambient_dim=sample_ambient_dim,
+        sample_shape=sample_shape,
+        sigma2xt_schedule=sigma2x_schedule,
+        residual_model=residual_model,
+        input_model=input_model,
+        time_embedding_size=time_embedding_size,
+        device=device,
+        **ddpm_model_kwargs
+    )
+    if ddpm_model.train_as_rnn:
+        mse_key = "subspace_trajectories"
+        mse_key_target = "unnoised_target"
+    else:
+        mse_key = "epsilon_hat"
+        mse_key_target = 'kernel_target'
+    return ddpm_model, mse_key, mse_key_target
+
+
+
+
+
 def teacher_forced_delayed_probe_cue(
     prep_sensory_shape,
     underlying_sensory_shape,
@@ -333,6 +384,7 @@ def hvae_bounceback_delayed_probe_cue_factorised_palimpsest_representation(
     feature_projection_sizes,
     device,
     ddpm_model_kwargs,
+    residual_model_kwargs,
 ):
     # assert all(
     #     [len(psp) == 1 for psp in prep_sensory_shape]
@@ -345,6 +397,7 @@ def hvae_bounceback_delayed_probe_cue_factorised_palimpsest_representation(
         sample_ambient_dim,
         input_model.network_input_size,
         time_embedding_size,
+        **residual_model_kwargs
     )
     ddpm_model = MultiPreparatoryBounceNetworkHVAEReverseProcess(
         sample_ambient_dim=sample_ambient_dim,
