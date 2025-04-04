@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple, Optional, Literal
 import torch
 from torch import Tensor as _T
 
-from ddpm.model.residual import VectoralResidualModel
+from ddpm.model.transition import VectoralResidualModel
 from ddpm.model.input import InputModelBlock
 
 from ddpm.model.main.base import (

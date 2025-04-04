@@ -1,4 +1,4 @@
-run_name: 'run_a2_index_cued_diffusion_with_swap_3'
+run_name: 'run_c_index_bounce_swap_4'
 ctd_batch_size: 512
 num_opt_steps: 50_000
 cued_feature: index

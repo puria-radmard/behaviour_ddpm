@@ -4,7 +4,7 @@ from ddpm.model.main.base.linear_subspace import *
 from ddpm.model.main.base.hvae import *
 from torch import Tensor as _T
 
-from ddpm.model.residual import BouncePopulationResidualModel
+from ddpm.model.transition import BouncePopulationResidualModel
 
 
 class LinearSubspaceBounceNetworkTeacherForcedHVAEReverseProcess(

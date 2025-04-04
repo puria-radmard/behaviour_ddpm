@@ -11,16 +11,16 @@ model_config:
     train_as_rnn: false
     noise_scaler: 'nat'
     seperate_output_neurons: false
+    bounce_euler_alpha: 0.9     # Changed !
+    bounce_noise_scalar: 0.5
     primary_euler_alpha: 0.1
-    bounce_euler_alpha: 0.95      # Changed!
-    primary_noise_scalar: 1.0     # Changed!
-    bounce_noise_scalar: 0.1
+    primary_noise_scalar: 1.0
   num_items: 2                      # Needed so we can pass index to input model during the cueing phase
 
 
 
 regularise_prep_state: true
-regularise_prep_state_weight: 0.05
+regularise_prep_state_weight: 0.01  # Changed!
 
 
 # New!
@@ -29,9 +29,9 @@ regularise_prep_activity_weight: 0.00001
 regularise_diffusion_nullspace: true
 
 
-# Diffusion
-ultimate_sigma2: 0.10
-starting_sigma2: 0.10
+# Diffusion - changed a bunch!
+ultimate_sigma2: 0.1
+starting_sigma2: 0.1
 num_timesteps: 40
 
 
@@ -46,7 +46,7 @@ save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_samp
 
 
 # resume_path: "results_link_sampler/hvae_direct_param_20250327/run_a2_index_cued_diffusion_with_swap_4/state.mdl"
-resume_path: "results_link_sampler/hvae_with_bounceback_20250330/run_c_index_bounce_swap_2/state.mdl"
+resume_path: "results_link_sampler/hvae_with_bounceback_20250330/run_c_index_bounce_swap_3/state.mdl"
 
 
 # Task

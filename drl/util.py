@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from drl.rl_envs import cc_reward_distributions
 
 from ddpm.model.main.base import OneShotDDPMReverseProcess
-from ddpm.model.residual import VectoralResidualModel
+from ddpm.model.transition import VectoralResidualModel
 from ddpm.model.embedding_reprs import SmoothEmbeddingBlockWithExtraEmbeddings
 
 

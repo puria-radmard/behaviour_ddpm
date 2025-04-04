@@ -9,7 +9,7 @@ from typing import Dict, Optional, List, Tuple
 from abc import ABC, abstractmethod
 
 from ddpm.model.embedding_reprs import TimeEmbeddingBlock
-from ddpm.model.residual import VectoralResidualModel, UNetResidualModel
+from ddpm.model.transition import VectoralResidualModel, UNetResidualModel
 from ddpm.model.input import InputModelBlock
 
 from ddpm.tasks.distribution import DistributionInformation

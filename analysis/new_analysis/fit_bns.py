@@ -26,13 +26,16 @@ _, save_path, _ = configure_logging_paths(save_path, [])
 analysis_args.write_to_yaml(os.path.join(save_path, "args.yaml"))
 
 
+print(save_path)
+
+
 run_name = analysis_args.run_name
 
 
 device = 'cuda'
 _, task, ddpm_model, _, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/args.yaml', device)
 num_neurons = ddpm_model.sample_ambient_dims[-1]
-ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/state.mdl'))
+ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/state.mdl', weights_only=True))
 
 ddpm_model.eval()
 
@@ -178,6 +181,7 @@ for i in tqdm(range(10_000)):
         fig, axes = plt.subplot_mosaic(
             '''
             AABB
+            AABB
             CCDD
             CCDD
             ''', figsize = (10, 10)
@@ -240,6 +244,7 @@ for i in tqdm(range(10_000)):
 
 
         standard_swap_model_simplex_plots(training_info['priors'][0].detach().cpu().numpy(), axes['D'])
+        axes['D'].set_title(training_info['priors'][0].mean(0).round(decimals = 3).tolist())
 
         fig.savefig(os.path.join(save_path, 'fit'))
         torch.save(swap_model.state_dict(), os.path.join(save_path, 'swap_model.mdl'))

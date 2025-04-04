@@ -14,7 +14,7 @@ from ddpm.mnist.task import (
 )
 
 from ddpm.model.main.base import *
-from ddpm.model.residual import VectoralResidualModel
+from ddpm.model.transition import VectoralResidualModel
 from ddpm.model.input import InputModelBlock, AllowIndexInputModelBlock
 from ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
