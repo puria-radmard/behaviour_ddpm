@@ -180,6 +180,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
 
             # Denoise in the full ambient space for one step: one_step_denoising, early_embedded_x0_pred both of shape [..., 1, ambient space dim]
             t_embedding = t_embeddings[-t_idx][None]
+
             embedded_predicted_residual = self.residual_model(
                 one_step_denoising, t_embedding, input_vectors[..., [-t_idx], :]
             )
@@ -195,7 +196,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             all_subspace_trajectories.append(subspace_activity)
             
             all_trajectories.append(one_step_denoising)
-
+        
         epsilon_hat = torch.concat(
             all_predicted_residuals[::-1], num_extra_dim
         )  # forward (diffusion) time for downstream MSE loss!
@@ -307,7 +308,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
 
         all_predicted_residual = self.extract_subspace(torch.concat(all_predicted_residual, -len(self.sample_ambient_dims)-1))
         new_samples = self.extract_subspace(base_samples.squeeze(-len(self.sample_ambient_dims)-1).detach())
-
+        
         return {
             "end_state": base_samples.squeeze(len(samples_shape)),
             "sample_trajectory": sample_trajectory.cpu(),
@@ -391,7 +392,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
                     *self.sample_ambient_dims,
                     device=self.sigma2xt_schedule.device,
                     dtype=self.sigma2xt_schedule.dtype,
-                )
+                ).abs()
                 * self.base_std
             )  # [..., 1, D]
         else:
@@ -415,7 +416,7 @@ class PreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess(
                 1, recent_state, embedded_predicted_residual, noise_scaler=noise_scaler
             )
             preparatory_trajectory.append(recent_state)
-
+        
         preparatory_trajectory = torch.concat(preparatory_trajectory, len(batch_shape))  # Reverse time!
         last_preparatory_trajectory_slice = preparatory_trajectory[*[slice(None) for _ in batch_shape], -1, :]
 

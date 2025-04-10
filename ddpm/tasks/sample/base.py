@@ -222,6 +222,43 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         )
 
 
+
+class AmbiguousVectoralEmbeddedExampleSampleGenerator(VectoralEmbeddedExampleSampleGenerator):
+
+    def __init__(self, sample_size: int, sample_radius: float, residual_in_behaviour_plane_only: bool, device="cuda") -> None:
+        super().__init__(sample_size=sample_size, sample_radius=sample_radius, residual_in_behaviour_plane_only=residual_in_behaviour_plane_only, response_location_key=None, device=device)
+
+        self.required_task_variable_keys = {"feature0_cart", "feature1_cart", "reporting_feature_idx"}
+        #import pdb; pdb.set_trace(header = 'del not working! or working weirdly...')
+        #delattr(self, 'response_location_key')
+        
+
+    def generate_sample_set(
+        self, num_samples: int, variable_dict: Dict[str, _T]
+    ) -> SwapSampleInformation:
+        selection_pmf = variable_dict["swap_probabilities"]  # [batch, num items]
+        batch_size = selection_pmf.shape[0]
+
+        selected_item_idx = torch.multinomial(selection_pmf, num_samples, replacement=True)  # [batch, sample]
+        batch_idx = torch.arange(batch_size, device=variable_dict['feature0'].device)[:, None].expand(batch_size, num_samples)  # [batch, sample]
+
+        selected_cartesian = variable_dict['feature0_cart'][batch_idx, selected_item_idx]
+        selected_cartesian1 = variable_dict['feature1_cart'][batch_idx, selected_item_idx]
+        selected_cartesian[variable_dict['reporting_feature_idx'] == 1] = selected_cartesian1[variable_dict['reporting_feature_idx'] == 1]
+
+        selected_cartesian = selected_cartesian @ self.linking_matrix
+        selected_cartesian = (
+            selected_cartesian + torch.randn_like(selected_cartesian) * 0.05
+        )
+        selected_cartesian = selected_cartesian * self.sample_radius
+
+        return SwapSampleInformation(selected_cartesian, selected_item_idx)
+
+
+
+
+
+
 class RadialVectoralEmbeddedExampleSampleGenerator(
     VectoralEmbeddedExampleSampleGenerator
 ):

@@ -18,15 +18,15 @@ from purias_utils.util.arguments_yaml import ConfigNamepace
 from ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
-from ddpm.utils.plotting import symmetrize_and_square_axis
+from ddpm.utils.vis.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
 from ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
+from ddpm.utils.vis import plot_standard_losses_multiepoch, imshow_palimpsest_reprs, scatter_standard_responses_multiepoch
 
 
 import matplotlib.cm as cmx
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from purias_utils.util.logging import configure_logging_paths
 from purias_utils.util.logging import LoopTimer
@@ -132,10 +132,6 @@ if resume_path is not None:
         optim.load_state_dict(torch.load(resume_path.replace('state.mdl', 'opt_state.mdl'), weights_only=True))
     except Exception as e:
         print(e)
-
-
-
-
 
 
 # For transparency
@@ -245,114 +241,67 @@ for t in tqdm(range(num_trials)):
 
     if (t - plotting_offset) % logging_freq == 0:
 
-        test_trial_information = task.generate_trial_information(
-            batch_size=1, num_samples=500
-        )
-
-        with torch.no_grad():
-            test_forward_process = ddpm_model.noise(
-                x_0=test_trial_information.sample_information.sample_set.to(device).float()
-            )
-            novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
-                prep_network_inputs=[
-                    pni[[0]] for pni in test_trial_information.prep_network_inputs
-                ],
-                diffusion_network_inputs=[
-                    dni[[0]] for dni in test_trial_information.diffusion_network_inputs
-                ],
-                prep_epoch_durations=test_trial_information.prep_epoch_durations,
-                diffusion_epoch_durations=test_trial_information.diffusion_epoch_durations,
-                samples_shape=[1, 500],
-                noise_scaler=1.0,
-            )
-
+        test_trial_information = task.generate_test_trial_information(num_samples=500)
+        
         fig, axes = plt.subplots(3, 5, figsize=(25, 15))
 
-        axes[0, 0].set_title("Real sample(s)")
-        axes[0, 1].set_title("Generated sample(s)")
-        axes[0, 2].set_title("Early predictions of $x_0$")
-        axes[0, 3].set_title(
-            "Samples from base distribution vs actual pre-diffusion behaviour states"
-        )
-        axes[0, 4].set_title("$\hat\epsilon$ during generation")
+        for trial_type_idx, test_trial_type in enumerate(task.task_variable_gen.trial_types):
 
-        task.sample_gen.display_samples(
-            test_trial_information.sample_information, axes[0, 0]
-        )
-        task.sample_gen.display_samples(novel_samples_dict["samples"], axes[0, 1])
-        task.sample_gen.display_early_x0_pred_timeseries(
-            novel_samples_dict["early_x0_preds"], axes[0, 2], kl_colors_scalarMap
-        )
-        task.sample_gen.display_samples(
-            novel_samples_prep_dicts[-1]["postprep_base_samples"].detach().cpu(),
-            axes[0, 3],
-        )
-        task.sample_gen.display_samples(
-            test_forward_process["x_t"][:, :, -1, ...], axes[0, 3]
-        )
-        task.sample_gen.display_early_x0_pred_timeseries(
-            novel_samples_dict["epsilon_hat"].detach().cpu(),
-            axes[0, 4],
-            kl_colors_scalarMap,
-        )
+            with torch.no_grad():
+                test_forward_process = ddpm_model.noise(
+                    x_0=test_trial_information.sample_information.sample_set.to(device).float()
+                )
+                novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
+                    prep_network_inputs=[
+                        pni[[trial_type_idx]] for pni in test_trial_information.prep_network_inputs
+                    ],
+                    diffusion_network_inputs=[
+                        dni[[trial_type_idx]] for dni in test_trial_information.diffusion_network_inputs
+                    ],
+                    prep_epoch_durations=test_trial_information.prep_epoch_durations,
+                    diffusion_epoch_durations=test_trial_information.diffusion_epoch_durations,
+                    samples_shape=[1, 500],
+                    noise_scaler=1.0,
+                )
 
-        task.task_variable_gen.display_task_variables(
-            test_trial_information.task_variable_information, axes[1, 0], axes[1, 1]
-        )
-
-        symmetrize_and_square_axis(axes[0, 0])
-        symmetrize_and_square_axis(axes[0, 1])
-        symmetrize_and_square_axis(axes[0, 2])
-        symmetrize_and_square_axis(axes[0, 3])
-        symmetrize_and_square_axis(axes[0, 4])
-
-        axes[1, 2].set_title("Individual timesteps MSE")
-        # axes[1,1].set_title('Individual timesteps MSE (zoomed in)')
-        axes[1, 3].set_title("MSE averaged over timesteps")
-        if t > plotting_start:
-            zoomed_start = int((t + 1 - plotting_start) / 3)
-            for h, trace in enumerate(
-                all_individual_residual_mses[: t + 1 - plotting_start].T
-            ):
-                color = kl_colors_scalarMap.to_rgba(h + 1)
-                axes[1, 2].plot(trace, color=color)
-                axes[2, 2].plot(trace[zoomed_start:], color=color)
-                # axes[1,1].plot(trace[-int(2 * (t+1-plotting_start) / 3):], color = color)
-            axes[1, 3].plot(
-                all_individual_residual_mses[: t + 1 - plotting_start].mean(-1)
+            scatter_standard_responses_multiepoch(
+                real_samples_axes = axes[0, 0],
+                generated_samples_axes = axes[0, 1],
+                early_predictions_axes = axes[0, 2],
+                start_of_prep_axes = axes[0, 3],
+                pred_residual_axes = axes[0, 4],
+                task = task,
+                task_variable_axes = [axes[1,0], axes[1,1]],
+                novel_samples_dict = novel_samples_dict,
+                novel_samples_prep_dicts = novel_samples_prep_dicts,
+                forward_process_dict = test_forward_process,
+                trial_info = test_trial_information,
+                diffusion_cmap = kl_colors_scalarMap,
+                trial_type_name = test_trial_type
             )
-            axes[2, 3].plot(
-                all_individual_residual_mses[zoomed_start : t + 1 - plotting_start].mean(-1)
+
+            plot_standard_losses_multiepoch(
+                mse_ax = axes[1, 2], mean_mse_ax = axes[1, 3], 
+                zoomed_mse_ax = axes[2, 2], zoomed_mean_mse_ax = axes[2, 3], 
+                prep_state_reg_axes = axes[1, 4], delay_activity_reg_axes = axes[2, 4],
+                training_step = t, plotting_start = plotting_start,
+                diffusion_cmap = kl_colors_scalarMap, num_timesteps = num_timesteps, 
+                all_individual_residual_mses = all_individual_residual_mses, 
+                all_prep_state_losses = all_prep_state_losses, 
+                all_delay_activity_losses = all_delay_activity_losses,
+                trial_type_name = test_trial_type
             )
-        cax = inset_axes(axes[1, 0], width="30%", height=1.0, loc=3)
-        plt.colorbar(
-            kl_colors_scalarMap,
-            cax=cax,
-            ticks=range(1, num_timesteps, 10),
-            orientation="vertical",
-        )
-
-        axes[1, 4].set_title("Prep state behaviour activity regulariser")
-        if t > plotting_start:
-            axes[1, 4].plot(all_prep_state_losses[: t + 1 - plotting_start])
-
-        axes[2, 4].set_title("Delay activity square mag")
-        if t > plotting_start:
-            axes[2, 4].plot(all_delay_activity_losses[: t + 1 - plotting_start])
-
+        
         fig.savefig(os.path.join(save_base, "latest_log.png"))
-        plt.close("all")
+
+        if 'palimpsest' in task_name:
+            fig_palimp, (stax, cax) = plt.subplots(1, 2, figsize = (10, 5))
+            import pdb; pdb.set_trace()
+            imshow_palimpsest_reprs([stax, cax], test_trial_information, task, [0, 2])
+            fig_palimp.savefig(os.path.join(save_base, "palimpsest_reprs.png"))
+
+        plt.close(test_trial_type)
 
         torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.mdl"))
         torch.save(optim.state_dict(), os.path.join(save_base, f"opt_state.mdl"))
-
-        if 'palimpsest' in task_name:
-
-            fig, (stax, cax) = plt.subplots(1, 2, figsize = (10, 5))
-
-            stax.imshow(test_trial_information.prep_network_inputs[0][0,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
-            cax.imshow(test_trial_information.prep_network_inputs[2][0,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
-
-            fig.savefig(os.path.join(save_base, "palimpsest_reprs.png"))
-
 

@@ -10,7 +10,7 @@ from purias_utils.util.arguments_yaml import ConfigNamepace
 
 from ddpm.model.main.scorematching import ScoreMatchingLinearSubspaceTeacherForcedDDPMReverseProcess
 from ddpm.tasks.main.scorematching import ScoreMatchingDiffusionTask
-from ddpm.utils.plotting import symmetrize_and_square_axis
+from ddpm.utils.vis.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
 
 import matplotlib.cm as cmx

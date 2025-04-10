@@ -5,6 +5,9 @@ from abc import ABC, abstractmethod
 from typing import Dict, Set, List
 
 
+default_dtype = torch.float32
+
+
 class SensoryGenerator(ABC):
     """
     Can generate sensory inputs as vectoral data or as images

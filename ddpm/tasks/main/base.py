@@ -39,10 +39,10 @@ class DiffusionTask:
 
         assert sensory_gen.required_task_variable_keys.issubset(
             task_variable_gen.task_variable_keys
-        )
+        ), f"sensory_gen requires {sensory_gen.required_task_variable_keys} but task_variable_gen only gives {task_variable_gen.task_variable_keys}"
         assert sample_gen.required_task_variable_keys.issubset(
             task_variable_gen.task_variable_keys
-        )
+        ), f"sample_gen requires {sample_gen.required_task_variable_keys} but task_variable_gen only gives {task_variable_gen.task_variable_keys}"
 
     def generate_trial_information(
         self, batch_size: int, num_samples: int, **task_variables_kwargs

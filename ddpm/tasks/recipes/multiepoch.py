@@ -139,7 +139,12 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
     **sample_kwargs
 ):
     task_variable_gen = ProbeDistanceProbabilityTaskVariableGenerator(
-        num_items, swap_function_width, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
+        num_items = num_items,
+        swap_function_width = swap_function_width,
+        stimulus_exposure_duration = stimulus_exposure_duration,
+        pre_index_delay_duration = pre_index_delay_duration,
+        index_duration = index_duration,
+        post_index_delay_duration = post_index_delay_duration,
     )
     sensory_gen = DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(
         num_items=num_items,
@@ -157,6 +162,51 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
         sensory_gen=sensory_gen,
         sample_gen=sample_gen,
     )
+
+
+
+def delayed_ambiguous_probe_cue_vectoral_with_swap_function_palimpsest(
+    sample_size,
+    num_items,
+    swap_function_width_0,
+    swap_function_width_1,
+    stimulus_exposure_duration,
+    pre_index_delay_duration,
+    index_duration,
+    post_index_delay_duration,
+    feature_0_num_tc,
+    feature_1_num_tc,
+    feature_0_num_width,
+    feature_1_num_width,
+    vectorise_input: bool = True,
+    **sample_kwargs
+):
+    task_variable_gen = AmbiguousProbeDistanceProbabilityTaskVariableGenerator(
+        num_items=num_items,
+        swap_function_width_0=swap_function_width_0,
+        swap_function_width_1=swap_function_width_1,
+        stimulus_exposure_duration=stimulus_exposure_duration,
+        pre_index_delay_duration=pre_index_delay_duration,
+        index_duration=index_duration,
+        post_index_delay_duration=post_index_delay_duration
+    )
+    sensory_gen = DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(
+        num_items=num_items,
+        feature_0_num_tc=feature_0_num_tc,
+        feature_1_num_tc=feature_1_num_tc,
+        feature_0_num_width=feature_0_num_width,
+        feature_1_num_width=feature_1_num_width,
+        vectorise_input=vectorise_input,
+    )
+    sample_gen = AmbiguousVectoralEmbeddedExampleSampleGenerator(
+        sample_size=sample_size, **sample_kwargs
+    )
+    return MultiEpochDiffusionTask(
+        task_variable_gen=task_variable_gen,
+        sensory_gen=sensory_gen,
+        sample_gen=sample_gen,
+    )
+
 
 
 

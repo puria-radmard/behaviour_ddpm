@@ -40,7 +40,7 @@ class InputModelBlock(nn.Module):
 
 class FactorisedInputModelBlock(InputModelBlock):
 
-    def __init__(self, sensory_shape: Tuple[int], feature_projection_sizes: Tuple[int], device: str) -> None:
+    def __init__(self, sensory_shape: Tuple[int], feature_projection_sizes: Tuple[int], bias: bool, device: str) -> None:
         super(InputModelBlock, self).__init__()
         self.device = device
         self.sensory_shape = sensory_shape
@@ -48,8 +48,8 @@ class FactorisedInputModelBlock(InputModelBlock):
         self.network_input_size = feature_projection_sizes[0] * feature_projection_sizes[1]
         assert len(sensory_shape) == len(feature_projection_sizes) == 2
 
-        self.feature_0_proj = nn.Linear(sensory_shape[0], feature_projection_sizes[0])
-        self.feature_1_proj = nn.Linear(sensory_shape[1], feature_projection_sizes[1])
+        self.feature_0_proj = nn.Linear(sensory_shape[0], feature_projection_sizes[0], bias = bias)
+        self.feature_1_proj = nn.Linear(sensory_shape[1], feature_projection_sizes[1], bias = bias)
 
     def forward(self, x: _T, num_timesteps: int) -> _T:
         x_feature_1_proj = self.feature_1_proj(x.to(self.device).float())    # [..., D1, N1]
@@ -97,7 +97,7 @@ class AllowIndexInputModelBlock(InputModelBlock):
             if self.indexing_embeddings_same_slots:
                 ret = self.index_embeddings(x.to(self.device))[..., 0, :]
             else:
-                embs = self.index_embeddings(x.to(self.device))[..., 0, :]
+                embs = self.index_embeddings(x.to(self.device).long())[..., 0, :]
                 empty_sensory = torch.zeros(*embs.shape[:-1], self.underlying_input_block.network_input_size, device = embs.device, dtype = embs.dtype)
                 ret = torch.concat([empty_sensory, embs], dim = -1)
             ret = self.add_timesteps(ret, num_timesteps)

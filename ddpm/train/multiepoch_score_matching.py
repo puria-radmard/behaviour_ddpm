@@ -15,7 +15,7 @@ from purias_utils.util.arguments_yaml import ConfigNamepace
 from ddpm.model.main.scorematching import (
     ScoreMatchingMultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
-from ddpm.utils.plotting import symmetrize_and_square_axis
+from ddpm.utils.vis.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
 from ddpm.tasks.main.multiepoch_scorematching import ScoreMatchingMultiEpochDiffusionTask
 

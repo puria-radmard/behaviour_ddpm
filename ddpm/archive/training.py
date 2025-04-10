@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from ddpm.utils.plotting import symmetrize_and_square_axis
+from ddpm.utils.vis.plotting import symmetrize_and_square_axis
 from ddpm.model import (
     VectoralResidualModel,
     DDPMReverseProcess,

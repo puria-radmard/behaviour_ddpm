@@ -6,6 +6,10 @@ from typing import Dict, Set, List
 
 from purias_utils.multiitem_working_memory.util.circle_utils import rectify_angles
 
+
+default_dtype = torch.float32
+
+
 class MultiEpochSensoryGenerator(ABC):
     """
     Can generate sensory inputs as vectoral data or as images
@@ -61,11 +65,12 @@ class DelayedIndexCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
         )  # on each batch row: x1, y1, x2, y2, ... --> [batch, num_items * 2]
         index = variable_dict["cued_item_idx"].unsqueeze(-1)
         empty = torch.zeros(batch_size, self.num_items * 2)
-        return [flattened_coords, empty, index, empty]
+        rets = [flattened_coords, empty, index, empty]
+        return [ret.to(default_dtype) for ret in rets]
 
     def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["report_features_cart"].shape[0]
-        return [torch.zeros(batch_size, self.num_items * 2)]
+        return [torch.zeros(batch_size, self.num_items * 2, dtype = default_dtype)]
 
 
 
@@ -125,6 +130,7 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
 
     def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, vectorise_input: bool = True) -> None:
         super().__init__(num_items, False)
+        self.required_task_variable_keys = {"report_features", "probe_features", "cued_item_idx"}
 
         self.probe_num_tc = probe_num_tc
         self.report_num_tc = report_num_tc
@@ -163,21 +169,25 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
         rescaled_diffs = rescaled_diffs * peak
         return rescaled_diffs
 
-    def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
-
-        probe_repr = self.generate_responses(variable_dict["probe_features"], self.probe_centers, self.probe_tuning_scales, 1.0)        # [B, N, probe size]
-        report_repr = self.generate_responses(variable_dict["report_features"], self.report_centers, self.report_tuning_scales, 1.0)
-        
-        probe_repr = probe_repr.unsqueeze(-2)
-        report_repr = report_repr.unsqueeze(-1)
-        flat_report_repr = torch.ones_like(report_repr)
-        
-        joint_repr = (probe_repr * report_repr)  # [B, N, probe size, report size]
+    def generate_joint_resps(self, repr0: _T, repr1: _T) -> _T:
+        """
+        XXX: shapes!
+        """
+        joint_repr = (repr0.unsqueeze(-2) * repr1.unsqueeze(-1))  # [B, N, probe size, report size]
         if self.vectorise_input:
             joint_resp = joint_repr.reshape(joint_repr.shape[0], self.num_items, -1)  # [B, total size]
         else:
             joint_resp = joint_repr
         joint_resp = joint_resp.sum(1)
+        return joint_resp
+
+    def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
+
+        probe_repr = self.generate_responses(variable_dict["probe_features"], self.probe_centers, self.probe_tuning_scales, 1.0)        # [B, N, probe size]
+        report_repr = self.generate_responses(variable_dict["report_features"], self.report_centers, self.report_tuning_scales, 1.0)
+        flat_report_repr = torch.ones_like(report_repr).unsqueeze(-1)
+
+        joint_resp = self.generate_joint_resps(probe_repr, report_repr)
 
         if 'override_cue_features' in variable_dict:
             print('override_cue_features being used by DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest.generate_prep_sensory_inputs! This should not be used for training ever!')
@@ -186,7 +196,7 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
             cue_repr = (overriden_probe_repr * flat_report_repr)  # [B, N, probe size, report size]
 
         else:
-            cue_repr = (probe_repr * flat_report_repr)  # [B, N, probe size, report size]
+            cue_repr = (probe_repr.unsqueeze(-2) * flat_report_repr)  # [B, N, probe size, report size]
 
         if self.vectorise_input:
             cue_resp = cue_repr.reshape(cue_repr.shape[0], self.num_items, -1)  # [B, total size]
@@ -199,8 +209,70 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
         # return [flattened_coords_with_empty, empty, chosen_probe_coords, empty]
         return [joint_resp, empty, cue_resp, empty]
 
-
     def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         batch_size = variable_dict["report_features_cart"].shape[0]
         return [torch.zeros(batch_size, *self.underlying_sensory_shape)]
 
+
+
+class DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest):
+
+    def __init__(self, num_items: int, feature_0_num_tc: int, feature_1_num_tc: int, feature_0_num_width: int, feature_1_num_width: int, vectorise_input: bool = True) -> None:
+        super(DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest, self).__init__(num_items, False)
+        self.required_task_variable_keys = {"feature0", "feature1", "cued_item_idx"}
+
+        # XXX: WET!
+
+        self.feature_0_num_tc = feature_0_num_tc
+        self.feature_1_num_tc = feature_1_num_tc
+
+        self.vectorise_input = vectorise_input
+
+        if vectorise_input:
+            self.underlying_sensory_shape = [self.feature_0_num_tc * self.feature_1_num_tc]
+        else:
+            self.underlying_sensory_shape = [self.feature_0_num_tc, self.feature_1_num_tc]
+
+        self.prep_sensory_shape = [self.underlying_sensory_shape] * 4
+        self.diffusion_sensory_shapes = [self.underlying_sensory_shape]
+
+        self.probe_centers = torch.linspace(-torch.pi, +torch.pi, feature_0_num_tc + 1)[:-1]
+        self.report_centers = torch.linspace(-torch.pi, +torch.pi, feature_1_num_tc + 1)[:-1]
+        self.probe_tuning_scales = torch.ones_like(self.probe_centers) * feature_0_num_width
+        self.report_tuning_scales = torch.ones_like(self.report_centers) * feature_1_num_width
+
+    def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
+        
+        feature0_repr = self.generate_responses(variable_dict["feature0"], self.probe_centers, self.probe_tuning_scales, 1.0)        # [B, N, feature 0 size]
+        feature1_repr = self.generate_responses(variable_dict["feature1"], self.report_centers, self.report_tuning_scales, 1.0)
+        probing_feature_idx = variable_dict["probing_feature_idx"]
+        joint_resp = self.generate_joint_resps(feature0_repr, feature1_repr)
+
+        cue_repr = torch.zeros(*feature0_repr.shape, feature1_repr.shape[-1], device = feature1_repr.device) # [B, N, feature 0 size, feature 1 size]
+        cue_repr[probing_feature_idx == 0] = feature0_repr[probing_feature_idx == 0].unsqueeze(-2) * torch.ones_like(feature1_repr[probing_feature_idx == 0]).unsqueeze(-1)
+        cue_repr[probing_feature_idx == 1] = feature1_repr[probing_feature_idx == 1].unsqueeze(-1) * torch.ones_like(feature0_repr[probing_feature_idx == 1]).unsqueeze(-2)
+        
+        if self.vectorise_input:
+            cue_resp = cue_repr.reshape(cue_repr.shape[0], self.num_items, -1)  # [B, total size]
+        else:
+            cue_resp = cue_repr
+        cue_resp = cue_resp[torch.arange(cue_resp.shape[0]),variable_dict["cued_item_idx"]] # [B, size0, size1]
+
+        # from matplotlib import pyplot as plt
+        # fig, axes = plt.subplots(len(cue_resp), 2, figsize = (10, 5 * len(cue_resp)))
+        # for pfi, axs, jj, cc in zip(probing_feature_idx.cpu().numpy(), axes, joint_resp.cpu().numpy(), cue_resp.cpu().numpy()):
+        #     axs[0].imshow(jj)
+        #     axs[1].imshow(cc)
+        #     axs[1].set_title(pfi)
+        # fig.savefig('asdf')
+
+        empty = torch.zeros_like(cue_resp)
+
+        # return [flattened_coords_with_empty, empty, chosen_probe_coords, empty]
+        return [joint_resp, empty, cue_resp, empty]
+
+
+    def generate_diffusion_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
+        # XXX: WET!
+        batch_size = variable_dict["feature0"].shape[0]
+        return [torch.zeros(batch_size, *self.underlying_sensory_shape)]

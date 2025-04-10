@@ -6,7 +6,7 @@ from tqdm import tqdm
 try:
     from ddpm.model import *
     from ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
-    from ddpm.utils.plotting import symmetrize_and_square_axis
+    from ddpm.utils.vis.plotting import symmetrize_and_square_axis
     from ddpm.contextual_ddpm_tasks import (
         generate_clifford_torus_directions,
         embed_2D_items_in_clifford,
@@ -14,7 +14,7 @@ try:
 except ImportError:
     from ddpm.model import *
     from ddpm.simple_ddpm_tasks import MANIFOLD_INFORMATION_DICTIONARY
-    from ddpm.utils.plotting import symmetrize_and_square_axis
+    from ddpm.utils.vis.plotting import symmetrize_and_square_axis
     from ddpm.contextual_ddpm_tasks import (
         generate_clifford_torus_directions,
         embed_2D_items_in_clifford,

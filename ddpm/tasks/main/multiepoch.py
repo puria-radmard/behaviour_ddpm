@@ -37,11 +37,19 @@ class MultiEpochDiffusionTask(DiffusionTask):
         self.sensory_gen: MultiEpochSensoryGenerator  # For typing lateer
 
     def generate_trial_information(
-        self, batch_size: int, num_samples: int, **task_variables_kwargs
+        self,
+        batch_size: Optional[int], 
+        num_samples: int, 
+        *_,
+        override_task_variable_information: Optional[Dict[str, _T]] = None,
+        **task_variables_kwargs
     ) -> MultiepochTrialInformation:
-        task_variable_information = self.task_variable_gen.generate_variable_dict(
-            batch_size=batch_size, **task_variables_kwargs
-        )
+        if override_task_variable_information is None:
+            task_variable_information = self.task_variable_gen.generate_variable_dict(
+                batch_size=batch_size, **task_variables_kwargs
+            )
+        else:
+            task_variable_information = override_task_variable_information
         prep_network_inputs = self.sensory_gen.generate_prep_sensory_inputs(
             task_variable_information
         )
@@ -69,6 +77,25 @@ class MultiEpochDiffusionTask(DiffusionTask):
             diffusion_epoch_durations,
             sample_information,
         )
+
+    def generate_test_trial_information(
+        self, num_samples: int, **task_variables_kwargs
+    ):
+        """
+        For tasks with multiple trial types (e.g. different feature dimensions can be cued, different ordering of cue and stimulus),
+        generate one trial type for each possible combination
+        """
+        representative_task_information = self.task_variable_gen.generate_representative_variable_dict(
+            **task_variables_kwargs
+        )
+        return self.generate_trial_information(
+            batch_size=None,
+            num_samples=num_samples,
+            override_task_variable_information=representative_task_information
+        )
+
+
+
 
 
 class InitialisedSampleSpaceMultiEpochDiffusionTask(MultiEpochDiffusionTask):
