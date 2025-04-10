@@ -70,8 +70,8 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
     post_index_delay_duration,
     probe_num_tc,
     report_num_tc,
-    probe_num_width,
-    report_num_width,
+    probe_tc_width,
+    report_tc_width,
     vectorise_input: bool = True,
     **sample_kwargs
 ):
@@ -82,8 +82,8 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
         num_items=num_items,
         probe_num_tc=probe_num_tc,
         report_num_tc=report_num_tc,
-        probe_num_width=probe_num_width,
-        report_num_width=report_num_width,
+        probe_tc_width=probe_tc_width,
+        report_tc_width=report_tc_width,
         vectorise_input=vectorise_input,
     )
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
@@ -95,6 +95,42 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
         sample_gen=sample_gen,
     )
 
+
+
+def delayed_ambiguous_probe_cue_vectoral_spike_and_slab_palimpsest(
+    sample_size,
+    num_items,
+    correct_probability,
+    stimulus_exposure_duration,
+    pre_index_delay_duration,
+    index_duration,
+    post_index_delay_duration,
+    feature0_num_tc,
+    feature1_num_tc,
+    feature0_tc_width,
+    feature1_tc_width,
+    vectorise_input: bool = True,
+    **sample_kwargs
+):
+    task_variable_gen = AmbiguousSpikeAndSlabSwapProbabilityTaskVariableGenerator(
+        num_items, correct_probability, stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration
+    )
+    sensory_gen = DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(
+        num_items=num_items,
+        feature0_num_tc=feature0_num_tc,
+        feature1_num_tc=feature1_num_tc,
+        feature0_tc_width=feature0_tc_width,
+        feature1_tc_width=feature1_tc_width,
+        vectorise_input=vectorise_input,
+    )
+    sample_gen = AmbiguousVectoralEmbeddedExampleSampleGenerator(
+        sample_size=sample_size, **sample_kwargs
+    )
+    return MultiEpochDiffusionTask(
+        task_variable_gen=task_variable_gen,
+        sensory_gen=sensory_gen,
+        sample_gen=sample_gen,
+    )
 
 
 
@@ -133,8 +169,8 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
     post_index_delay_duration,
     probe_num_tc,
     report_num_tc,
-    probe_num_width,
-    report_num_width,
+    probe_tc_width,
+    report_tc_width,
     vectorise_input: bool = True,
     **sample_kwargs
 ):
@@ -150,8 +186,8 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
         num_items=num_items,
         probe_num_tc=probe_num_tc,
         report_num_tc=report_num_tc,
-        probe_num_width=probe_num_width,
-        report_num_width=report_num_width,
+        probe_tc_width=probe_tc_width,
+        report_tc_width=report_tc_width,
         vectorise_input=vectorise_input,
     )
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
@@ -176,8 +212,8 @@ def delayed_ambiguous_probe_cue_vectoral_with_swap_function_palimpsest(
     post_index_delay_duration,
     feature0_num_tc,
     feature1_num_tc,
-    feature_0_num_width,
-    feature_1_num_width,
+    feature0_tc_width,
+    feature1_tc_width,
     vectorise_input: bool = True,
     **sample_kwargs
 ):
@@ -194,8 +230,8 @@ def delayed_ambiguous_probe_cue_vectoral_with_swap_function_palimpsest(
         num_items=num_items,
         feature0_num_tc=feature0_num_tc,
         feature1_num_tc=feature1_num_tc,
-        feature_0_num_width=feature_0_num_width,
-        feature_1_num_width=feature_1_num_width,
+        feature0_tc_width=feature0_tc_width,
+        feature1_tc_width=feature1_tc_width,
         vectorise_input=vectorise_input,
     )
     sample_gen = AmbiguousVectoralEmbeddedExampleSampleGenerator(

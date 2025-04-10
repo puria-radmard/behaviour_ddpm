@@ -55,8 +55,8 @@ task_config:
   
   probe_num_tc: 16
   report_num_tc: 16
-  probe_num_width: 5.0
-  report_num_width: 5.0
+  probe_tc_width: 5.0
+  report_tc_width: 5.0
 
   vectorise_input: false
   

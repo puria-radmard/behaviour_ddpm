@@ -22,17 +22,15 @@ def symmetrize_and_square_axis(axes, min_size=None):
     axes.set_xlim(xmin=-xy_max, xmax=xy_max)
 
 
-def plot_standard_losses_multiepoch(
-    mse_ax: Axes, mean_mse_ax: Axes, zoomed_mse_ax: Axes, zoomed_mean_mse_ax: Axes, prep_state_reg_axes: Axes, delay_activity_reg_axes: Axes,
+def plot_mse_losses(
+    mse_ax: Axes, mean_mse_ax: Axes, zoomed_mse_ax: Axes, zoomed_mean_mse_ax: Axes,
     training_step: int, plotting_start: int, num_timesteps: int, diffusion_cmap, trial_type_name: str,
-    all_individual_residual_mses: _A, all_prep_state_losses: _A, all_delay_activity_losses: _A
+    all_individual_residual_mses: _A
 ):
-    mse_ax.set_title(f"Individual timesteps MSE - {trial_type_name}")
-    zoomed_mse_ax.set_title(f'Individual timesteps MSE (zoomed in) - {trial_type_name}')
-    mean_mse_ax.set_title(f"MSE averaged over timesteps - {trial_type_name}")
-    zoomed_mean_mse_ax.set_title(f"MSE averaged over timesteps (zoomed in) - {trial_type_name}")
-    prep_state_reg_axes.set_title(f"Prep state behaviour activity regulariser - {trial_type_name}")
-    delay_activity_reg_axes.set_title(f"Delay activity square mag - {trial_type_name}")
+    mse_ax.set_title(f"Individual timesteps MSE\n{trial_type_name}")
+    zoomed_mse_ax.set_title(f'Individual timesteps MSE (zoomed in)\n{trial_type_name}')
+    mean_mse_ax.set_title(f"MSE averaged over timesteps\n{trial_type_name}")
+    zoomed_mean_mse_ax.set_title(f"MSE averaged over timesteps (zoomed in)\n{trial_type_name}")
 
     if training_step > plotting_start:
         zoomed_start = int((training_step + 1 - plotting_start) / 3)
@@ -49,12 +47,31 @@ def plot_standard_losses_multiepoch(
             all_individual_residual_mses[zoomed_start : training_step + 1 - plotting_start].mean(-1)
         )
 
-    cax = inset_axes(mse_ax, width="30%", height=1.0, loc=2)
+    cax = inset_axes(mse_ax, width="30%", height=1.0, loc=1)
     plt.colorbar(
         diffusion_cmap,
         cax=cax,
         ticks=range(1, num_timesteps, 10),
         orientation="vertical",
+    )
+
+
+def plot_standard_losses_multiepoch(
+    mse_ax: Axes, mean_mse_ax: Axes, zoomed_mse_ax: Axes, zoomed_mean_mse_ax: Axes, prep_state_reg_axes: Axes, delay_activity_reg_axes: Axes,
+    training_step: int, plotting_start: int, num_timesteps: int, diffusion_cmap, trial_type_name: str,
+    all_individual_residual_mses: _A, all_prep_state_losses: _A, all_delay_activity_losses: _A
+):
+    mse_ax.set_title(f"Individual timesteps MSE\n{trial_type_name}")
+    zoomed_mse_ax.set_title(f'Individual timesteps MSE (zoomed in)\n{trial_type_name}')
+    mean_mse_ax.set_title(f"MSE averaged over timesteps\n{trial_type_name}")
+    zoomed_mean_mse_ax.set_title(f"MSE averaged over timesteps (zoomed in)\n{trial_type_name}")
+    prep_state_reg_axes.set_title(f"Prep state behaviour activity regulariser\n{trial_type_name}")
+    delay_activity_reg_axes.set_title(f"Delay activity square mag\n{trial_type_name}")
+
+    plot_mse_losses(
+        mse_ax, mean_mse_ax, zoomed_mse_ax, zoomed_mean_mse_ax,
+        training_step, plotting_start, num_timesteps, 
+        diffusion_cmap, trial_type_name, all_individual_residual_mses
     )
 
     if training_step > plotting_start:
@@ -79,38 +96,41 @@ def scatter_standard_responses_multiepoch(
     trial_info: MultiepochTrialInformation,
     diffusion_cmap,
     trial_type_name: str,
+    batch_idx: int
 ):
 
-    real_samples_axes.set_title(f"Real sample(s) - {trial_type_name}")
-    generated_samples_axes.set_title(f"Generated sample(s) - {trial_type_name}")
-    early_predictions_axes.set_title(f"Early predictions of $x_0$ - {trial_type_name}")
+    real_samples_axes.set_title(f"Real sample(s)\n{trial_type_name}")
+    generated_samples_axes.set_title(f"Generated sample(s)\n{trial_type_name}")
+    early_predictions_axes.set_title(f"Early predictions of $x_0$\n{trial_type_name}")
     start_of_prep_axes.set_title(
-        f"Samples from base distribution vs actual pre-diffusion behaviour states - {trial_type_name}"
+        f"Samples from base distribution vs\nactual pre-diffusion behaviour states\n{trial_type_name}"
     )
-    pred_residual_axes.set_title(f"$\hat\epsilon$ during generation - {trial_type_name}")
+    pred_residual_axes.set_title(f"$\hat\epsilon$ during generation\n{trial_type_name}")
 
     task.sample_gen.display_samples(
-        trial_info.sample_information, real_samples_axes
+        trial_info.sample_information, real_samples_axes, batch_idx = batch_idx
     )
-    task.sample_gen.display_samples(novel_samples_dict["samples"], generated_samples_axes)
+    task.sample_gen.display_samples(novel_samples_dict["samples"], generated_samples_axes, batch_idx = batch_idx)
     task.sample_gen.display_early_x0_pred_timeseries(
-        novel_samples_dict["early_x0_preds"], early_predictions_axes, diffusion_cmap
+        novel_samples_dict["early_x0_preds"], early_predictions_axes, diffusion_cmap, batch_idx = batch_idx
     )
     task.sample_gen.display_samples(
         novel_samples_prep_dicts[-1]["postprep_base_samples"].detach().cpu(),
-        start_of_prep_axes,
+        axes = start_of_prep_axes,
+        batch_idx = batch_idx,
     )
     task.sample_gen.display_samples(
-        forward_process_dict["x_t"][:, :, -1, ...], start_of_prep_axes
+        forward_process_dict["x_t"][:, :, -1, ...], start_of_prep_axes, batch_idx = batch_idx
     )
     task.sample_gen.display_early_x0_pred_timeseries(
         novel_samples_dict["epsilon_hat"].detach().cpu(),
         pred_residual_axes,
         diffusion_cmap,
+        batch_idx = batch_idx
     )
 
     task.task_variable_gen.display_task_variables(
-        trial_info.task_variable_information, *task_variable_axes
+        trial_info.task_variable_information, *task_variable_axes, batch_idx = batch_idx
     )
     symmetrize_and_square_axis(real_samples_axes)
     symmetrize_and_square_axis(generated_samples_axes)
@@ -121,8 +141,8 @@ def scatter_standard_responses_multiepoch(
 
 
 
-def imshow_palimpsest_reprs(all_axes: List[Axes], trial_info: MultiepochTrialInformation, task: MultiEpochDiffusionTask, all_prep_epoch_indices: List[int]):
+def imshow_palimpsest_reprs(all_axes: List[Axes], trial_info: MultiepochTrialInformation, task: MultiEpochDiffusionTask, all_prep_epoch_indices: List[int], batch_idx: int):
     assert len(all_axes) == len(all_prep_epoch_indices)
     for ax, ind in zip(all_axes, all_prep_epoch_indices):
-        ax.imshow(trial_info.prep_network_inputs[ind][0,0].cpu().reshape(task.sensory_gen.num_tcs[0], task.sensory_gen.num_tcs[1]))
+        ax.imshow(trial_info.prep_network_inputs[ind][batch_idx,0].cpu().reshape(task.sensory_gen.num_tcs[0], task.sensory_gen.num_tcs[1]))
 

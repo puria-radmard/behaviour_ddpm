@@ -18,10 +18,9 @@ from purias_utils.util.arguments_yaml import ConfigNamepace
 from ddpm.model.main.multiepoch import (
     MultiPreparatoryLinearSubspaceTeacherForcedDDPMReverseProcess,
 )
-from ddpm.utils.vis.plotting import symmetrize_and_square_axis
 from ddpm import tasks, model
 from ddpm.tasks.main.multiepoch import MultiEpochDiffusionTask
-from ddpm.utils.vis import plot_standard_losses_multiepoch, imshow_palimpsest_reprs, scatter_standard_responses_multiepoch
+from ddpm.utils.vis import plot_standard_losses_multiepoch, imshow_palimpsest_reprs, scatter_standard_responses_multiepoch, plot_mse_losses
 
 
 import matplotlib.cm as cmx
@@ -70,7 +69,6 @@ timer = LoopTimer(num_trials)
 [training_print_path], save_base, _ = configure_logging_paths(
     save_base, log_suffixes=[f"train"], index_new=True
 )
-all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
 all_prep_state_losses = np.zeros([num_trials])
 all_delay_activity_losses = np.zeros([num_trials])
 args.write_to_yaml(os.path.join(save_base, "args.yaml"))
@@ -85,6 +83,10 @@ sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 task: MultiEpochDiffusionTask = getattr(tasks, task_name)(**task_config.dict)
 task.save_metadata(os.path.join(save_base, "task_metadata"))
+all_individual_residual_mses_per_trial_type = {trial_type: np.zeros([num_trials, num_timesteps]) for trial_type in task.task_variable_gen.trial_types}
+all_individual_residual_mses_per_trial_type['all'] = np.zeros([num_trials, num_timesteps])
+if len(task.task_variable_gen.trial_types) == 1:
+    assert task.task_variable_gen.trial_types[0] == 'all'
 
 
 # Set up model
@@ -233,9 +235,22 @@ for t in tqdm(range(num_trials)):
         torch.save(optim.state_dict(), os.path.join(save_base, f"opt_state.{t}.mdl"))
 
     if t >= plotting_start:
-        all_individual_residual_mses[t - plotting_start, :] = (
-            residual_mse.detach().cpu().mean(0).mean(0)
-        )
+
+        if len(all_individual_residual_mses_per_trial_type) == 1:
+            assert 'trial_type_idx' not in trial_information.task_variable_information
+            all_individual_residual_mses_per_trial_type['all'][t - plotting_start, :] = (
+                residual_mse.detach().cpu().mean(0).mean(0)
+            )
+        else:
+            all_individual_residual_mses_per_trial_type['all'][t - plotting_start, :] = (
+                residual_mse.detach().cpu().mean(0).mean(0)
+            )
+            for trial_type_i, trial_type in enumerate(task.task_variable_gen.trial_types):
+                trial_mask = (trial_information.task_variable_information['trial_type_idx'] == trial_type_i)
+                all_individual_residual_mses_per_trial_type[trial_type][t - plotting_start, :] = (
+                    residual_mse[trial_mask].detach().cpu().mean(0).mean(0)
+                )
+
         all_prep_state_losses[t - plotting_start] = prep_state_loss.detach().cpu()
         all_delay_activity_losses[t - plotting_start] = delay_activity_loss.detach().cpu()
 
@@ -243,64 +258,78 @@ for t in tqdm(range(num_trials)):
 
         test_trial_information = task.generate_test_trial_information(num_samples=500)
         
-        fig, axes = plt.subplots(3, 5, figsize=(25, 15))
+        # fig, axes = plt.subplots(3, 5, figsize=(25, 15))
+        fig, axes = plt.subplots(1 + 2 * len(task.task_variable_gen.trial_types), 7, figsize=(35, 5 * (1 + 2 * len(task.task_variable_gen.trial_types))))
+
+        # TODO: split up losses!
+        plot_standard_losses_multiepoch(
+            mse_ax = axes[0, 0], mean_mse_ax = axes[0, 1], 
+            zoomed_mse_ax = axes[0, 2], zoomed_mean_mse_ax = axes[0, 3], 
+            prep_state_reg_axes = axes[0, 4], delay_activity_reg_axes = axes[0, 5],
+            training_step = t, plotting_start = plotting_start,
+            diffusion_cmap = kl_colors_scalarMap,
+            num_timesteps = num_timesteps, 
+            all_individual_residual_mses = all_individual_residual_mses_per_trial_type['all'], 
+            all_prep_state_losses = all_prep_state_losses, 
+            all_delay_activity_losses = all_delay_activity_losses,
+            trial_type_name = 'all'
+        )
+
+        with torch.no_grad():
+            test_forward_process = ddpm_model.noise(
+                x_0=test_trial_information.sample_information.sample_set.to(device).float()
+            )
+            novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
+                prep_network_inputs=test_trial_information.prep_network_inputs,
+                diffusion_network_inputs=test_trial_information.diffusion_network_inputs,
+                prep_epoch_durations=test_trial_information.prep_epoch_durations,
+                diffusion_epoch_durations=test_trial_information.diffusion_epoch_durations,
+                samples_shape=[len(task.task_variable_gen.trial_types), 500],
+                noise_scaler=1.0,
+            )
 
         for trial_type_idx, test_trial_type in enumerate(task.task_variable_gen.trial_types):
 
-            with torch.no_grad():
-                test_forward_process = ddpm_model.noise(
-                    x_0=test_trial_information.sample_information.sample_set.to(device).float()
-                )
-                novel_samples_prep_dicts, novel_samples_dict = ddpm_model.generate_samples(
-                    prep_network_inputs=[
-                        pni[[trial_type_idx]] for pni in test_trial_information.prep_network_inputs
-                    ],
-                    diffusion_network_inputs=[
-                        dni[[trial_type_idx]] for dni in test_trial_information.diffusion_network_inputs
-                    ],
-                    prep_epoch_durations=test_trial_information.prep_epoch_durations,
-                    diffusion_epoch_durations=test_trial_information.diffusion_epoch_durations,
-                    samples_shape=[1, 500],
-                    noise_scaler=1.0,
-                )
+            trial_type_top_row_idx = trial_type_idx * 2 + 1
 
             scatter_standard_responses_multiepoch(
-                real_samples_axes = axes[0, 0],
-                generated_samples_axes = axes[0, 1],
-                early_predictions_axes = axes[0, 2],
-                start_of_prep_axes = axes[0, 3],
-                pred_residual_axes = axes[0, 4],
+                real_samples_axes = axes[trial_type_top_row_idx, 0],
+                generated_samples_axes = axes[trial_type_top_row_idx, 1],
+                early_predictions_axes = axes[trial_type_top_row_idx, 2],
+                start_of_prep_axes = axes[trial_type_top_row_idx, 3],
+                pred_residual_axes = axes[trial_type_top_row_idx, 4],
                 task = task,
-                task_variable_axes = [axes[1,0], axes[1,1]],
+                task_variable_axes = [axes[trial_type_top_row_idx + 1,0], axes[trial_type_top_row_idx + 1,1]],
                 novel_samples_dict = novel_samples_dict,
                 novel_samples_prep_dicts = novel_samples_prep_dicts,
                 forward_process_dict = test_forward_process,
                 trial_info = test_trial_information,
                 diffusion_cmap = kl_colors_scalarMap,
-                trial_type_name = test_trial_type
+                trial_type_name = test_trial_type,
+                batch_idx = trial_type_idx
             )
 
-            plot_standard_losses_multiepoch(
-                mse_ax = axes[1, 2], mean_mse_ax = axes[1, 3], 
-                zoomed_mse_ax = axes[2, 2], zoomed_mean_mse_ax = axes[2, 3], 
-                prep_state_reg_axes = axes[1, 4], delay_activity_reg_axes = axes[2, 4],
-                training_step = t, plotting_start = plotting_start,
-                diffusion_cmap = kl_colors_scalarMap, num_timesteps = num_timesteps, 
-                all_individual_residual_mses = all_individual_residual_mses, 
-                all_prep_state_losses = all_prep_state_losses, 
-                all_delay_activity_losses = all_delay_activity_losses,
-                trial_type_name = test_trial_type
+            plot_mse_losses(
+                mse_ax = axes[trial_type_top_row_idx, 5], 
+                mean_mse_ax = axes[trial_type_top_row_idx, 6], 
+                zoomed_mse_ax = axes[trial_type_top_row_idx+1, 5],  
+                zoomed_mean_mse_ax = axes[trial_type_top_row_idx+1, 6], 
+                training_step = t, 
+                plotting_start = plotting_start, 
+                num_timesteps = num_timesteps, 
+                diffusion_cmap = kl_colors_scalarMap, 
+                trial_type_name = test_trial_type,
+                all_individual_residual_mses = all_individual_residual_mses_per_trial_type[test_trial_type]
+ 
             )
+
+            if 'palimpsest' in task_name:
+                stax, cax = [axes[trial_type_top_row_idx + 1,2], axes[trial_type_top_row_idx + 1,3]]
+                imshow_palimpsest_reprs([stax, cax], test_trial_information, task, [0, 2], trial_type_idx)
         
         fig.savefig(os.path.join(save_base, "latest_log.png"))
-
-        if 'palimpsest' in task_name:
-            fig_palimp, (stax, cax) = plt.subplots(1, 2, figsize = (10, 5))
-            imshow_palimpsest_reprs([stax, cax], test_trial_information, task, [0, 2])
-            fig_palimp.savefig(os.path.join(save_base, "palimpsest_reprs.png"))
 
         plt.close(test_trial_type)
 
         torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.mdl"))
         torch.save(optim.state_dict(), os.path.join(save_base, f"opt_state.mdl"))
-

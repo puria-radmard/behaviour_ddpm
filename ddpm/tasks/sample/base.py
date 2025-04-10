@@ -182,19 +182,19 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         return closest_rate, {"magnitude": magnitudes}
 
     def display_samples(
-        self, sample_set: Union[SwapSampleInformation, _T], axes: Axes, label=None
+        self, sample_set: Union[SwapSampleInformation, _T], axes: Axes, batch_idx: int, label=None
     ) -> None:
         if isinstance(sample_set, SwapSampleInformation):
-            samples = sample_set.sample_set[0] @ self.linking_matrix.T
-            c = sample_set.item_indices[0]
+            samples = sample_set.sample_set[batch_idx] @ self.linking_matrix.T
+            c = sample_set.item_indices[batch_idx]
         else:
-            samples = sample_set[0].cpu().numpy() @ self.linking_matrix.T
+            samples = sample_set[batch_idx].cpu().numpy() @ self.linking_matrix.T
             c = None
         axes.scatter(samples[:, 0], samples[:, 1], alpha=0.5, s=1, c=c, label=label)
         axes.add_patch(plt.Circle((0, 0), self.sample_radius, color="red", fill=False))
 
     def display_early_x0_pred_timeseries(
-        self, early_preds_set: _T, axes: Axes, cmap: ScalarMappable
+        self, early_preds_set: _T, axes: Axes, cmap: ScalarMappable, batch_idx: int
     ) -> None:
         """
         early_preds_set of shape [B, T, <dim x>] but in reversed order (i.e. T --> 1)
@@ -203,7 +203,7 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         for h in range(T):
             if T % 10 == 0:
                 color = cmap.to_rgba(T - h)
-                timestep_preds = early_preds_set[0, ..., h, :] @ self.linking_matrix.T
+                timestep_preds = early_preds_set[batch_idx, ..., h, :] @ self.linking_matrix.T
                 axes.scatter(
                     timestep_preds[:, 0],
                     timestep_preds[:, 1],
@@ -242,9 +242,10 @@ class AmbiguousVectoralEmbeddedExampleSampleGenerator(VectoralEmbeddedExampleSam
         selected_item_idx = torch.multinomial(selection_pmf, num_samples, replacement=True)  # [batch, sample]
         batch_idx = torch.arange(batch_size, device=variable_dict['feature0'].device)[:, None].expand(batch_size, num_samples)  # [batch, sample]
 
-        selected_cartesian = variable_dict['feature0_cart'][batch_idx, selected_item_idx]
-        selected_cartesian1 = variable_dict['feature1_cart'][batch_idx, selected_item_idx]
-        selected_cartesian[variable_dict['reporting_feature_idx'] == 1] = selected_cartesian1[variable_dict['reporting_feature_idx'] == 1]
+        reporting_cartesians = variable_dict['feature0_cart']
+        reporting_cartesians1 = variable_dict['feature1_cart']
+        reporting_cartesians[variable_dict['reporting_feature_idx'] == 1] = reporting_cartesians1[variable_dict['reporting_feature_idx'] == 1]
+        selected_cartesian = reporting_cartesians[batch_idx, selected_item_idx]
 
         selected_cartesian = selected_cartesian @ self.linking_matrix
         selected_cartesian = (

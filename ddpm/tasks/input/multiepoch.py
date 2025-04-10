@@ -130,7 +130,7 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
 
     palimpsest_feature_names = ['probe', 'report']
 
-    def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, vectorise_input: bool = True) -> None:
+    def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_tc_width: int, report_tc_width: int, vectorise_input: bool = True) -> None:
         super().__init__(num_items, False)
         self.required_task_variable_keys = {"report_features", "probe_features", "cued_item_idx"}
 
@@ -149,8 +149,8 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
 
         self.probe_centers = torch.linspace(-torch.pi, +torch.pi, probe_num_tc + 1)[:-1]
         self.report_centers = torch.linspace(-torch.pi, +torch.pi, report_num_tc + 1)[:-1]
-        self.probe_tuning_scales = torch.ones_like(self.probe_centers) * probe_num_width
-        self.report_tuning_scales = torch.ones_like(self.report_centers) * report_num_width
+        self.probe_tuning_scales = torch.ones_like(self.probe_centers) * probe_tc_width
+        self.report_tuning_scales = torch.ones_like(self.report_centers) * report_tc_width
     
     @property
     def num_tcs(self) -> Tuple[int]:
@@ -225,7 +225,7 @@ class DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProb
 
     palimpsest_feature_names = ['feature0', 'feature1']
 
-    def __init__(self, num_items: int, feature0_num_tc: int, feature1_num_tc: int, feature_0_num_width: int, feature_1_num_width: int, vectorise_input: bool = True) -> None:
+    def __init__(self, num_items: int, feature0_num_tc: int, feature1_num_tc: int, feature0_tc_width: int, feature1_tc_width: int, vectorise_input: bool = True) -> None:
         super(DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest, self).__init__(num_items, False)
         self.required_task_variable_keys = {"feature0", "feature1", "cued_item_idx"}
 
@@ -246,8 +246,8 @@ class DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProb
 
         self.probe_centers = torch.linspace(-torch.pi, +torch.pi, feature0_num_tc + 1)[:-1]
         self.report_centers = torch.linspace(-torch.pi, +torch.pi, feature1_num_tc + 1)[:-1]
-        self.probe_tuning_scales = torch.ones_like(self.probe_centers) * feature_0_num_width
-        self.report_tuning_scales = torch.ones_like(self.report_centers) * feature_1_num_width
+        self.probe_tuning_scales = torch.ones_like(self.probe_centers) * feature0_tc_width
+        self.report_tuning_scales = torch.ones_like(self.report_centers) * feature1_tc_width
 
     def generate_prep_sensory_inputs(self, variable_dict: Dict[str, _T]) -> List[_T]:
         
