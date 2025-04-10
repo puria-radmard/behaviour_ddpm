@@ -124,5 +124,5 @@ def scatter_standard_responses_multiepoch(
 def imshow_palimpsest_reprs(all_axes: List[Axes], trial_info: MultiepochTrialInformation, task: MultiEpochDiffusionTask, all_prep_epoch_indices: List[int]):
     assert len(all_axes) == len(all_prep_epoch_indices)
     for ax, ind in zip(all_axes, all_prep_epoch_indices):
-        ax.imshow(trial_info.prep_network_inputs[ind][0,0].cpu().reshape(task.sensory_gen.probe_num_tc, task.sensory_gen.report_num_tc))
+        ax.imshow(trial_info.prep_network_inputs[ind][0,0].cpu().reshape(task.sensory_gen.num_tcs[0], task.sensory_gen.num_tcs[1]))
 

@@ -50,8 +50,8 @@ resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sa
 task_name: delayed_ambiguous_probe_cue_vectoral_with_swap_function_palimpsest
 task_config:
 
-  feature_0_num_tc: 16
-  feature_1_num_tc: 16
+  feature0_num_tc: 16
+  feature1_num_tc: 16
   feature_0_num_width: 5.0
   feature_1_num_width: 5.0
 

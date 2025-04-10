@@ -296,7 +296,6 @@ for t in tqdm(range(num_trials)):
 
         if 'palimpsest' in task_name:
             fig_palimp, (stax, cax) = plt.subplots(1, 2, figsize = (10, 5))
-            import pdb; pdb.set_trace()
             imshow_palimpsest_reprs([stax, cax], test_trial_information, task, [0, 2])
             fig_palimp.savefig(os.path.join(save_base, "palimpsest_reprs.png"))
 

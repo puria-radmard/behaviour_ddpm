@@ -2,7 +2,7 @@ import torch
 from torch import Tensor as _T
 
 from abc import ABC, abstractmethod
-from typing import Dict, Set, List
+from typing import Dict, Set, List, Tuple
 
 from purias_utils.multiitem_working_memory.util.circle_utils import rectify_angles
 
@@ -128,6 +128,8 @@ class DelayedProbeCuingSensoryGeneratorWithMemory(MultiEpochSensoryGenerator):
 
 class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSensoryGeneratorWithMemory):
 
+    palimpsest_feature_names = ['probe', 'report']
+
     def __init__(self, num_items: int, probe_num_tc: int, report_num_tc: int, probe_num_width: int, report_num_width: int, vectorise_input: bool = True) -> None:
         super().__init__(num_items, False)
         self.required_task_variable_keys = {"report_features", "probe_features", "cued_item_idx"}
@@ -149,6 +151,10 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
         self.report_centers = torch.linspace(-torch.pi, +torch.pi, report_num_tc + 1)[:-1]
         self.probe_tuning_scales = torch.ones_like(self.probe_centers) * probe_num_width
         self.report_tuning_scales = torch.ones_like(self.report_centers) * report_num_width
+    
+    @property
+    def num_tcs(self) -> Tuple[int]:
+        return tuple(getattr(self, f'{pfn}_num_tc') for pfn in self.palimpsest_feature_names)
 
     @staticmethod
     def generate_responses(features: _T, centers: _T, scales: _T, peak: float) ->_T:
@@ -217,27 +223,29 @@ class DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSen
 
 class DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest):
 
-    def __init__(self, num_items: int, feature_0_num_tc: int, feature_1_num_tc: int, feature_0_num_width: int, feature_1_num_width: int, vectorise_input: bool = True) -> None:
+    palimpsest_feature_names = ['feature0', 'feature1']
+
+    def __init__(self, num_items: int, feature0_num_tc: int, feature1_num_tc: int, feature_0_num_width: int, feature_1_num_width: int, vectorise_input: bool = True) -> None:
         super(DelayedProbeCuingSensoryGeneratorWithMemoryPalimpsest, self).__init__(num_items, False)
         self.required_task_variable_keys = {"feature0", "feature1", "cued_item_idx"}
 
         # XXX: WET!
 
-        self.feature_0_num_tc = feature_0_num_tc
-        self.feature_1_num_tc = feature_1_num_tc
+        self.feature0_num_tc = feature0_num_tc
+        self.feature1_num_tc = feature1_num_tc
 
         self.vectorise_input = vectorise_input
 
         if vectorise_input:
-            self.underlying_sensory_shape = [self.feature_0_num_tc * self.feature_1_num_tc]
+            self.underlying_sensory_shape = [self.feature0_num_tc * self.feature1_num_tc]
         else:
-            self.underlying_sensory_shape = [self.feature_0_num_tc, self.feature_1_num_tc]
+            self.underlying_sensory_shape = [self.feature0_num_tc, self.feature1_num_tc]
 
         self.prep_sensory_shape = [self.underlying_sensory_shape] * 4
         self.diffusion_sensory_shapes = [self.underlying_sensory_shape]
 
-        self.probe_centers = torch.linspace(-torch.pi, +torch.pi, feature_0_num_tc + 1)[:-1]
-        self.report_centers = torch.linspace(-torch.pi, +torch.pi, feature_1_num_tc + 1)[:-1]
+        self.probe_centers = torch.linspace(-torch.pi, +torch.pi, feature0_num_tc + 1)[:-1]
+        self.report_centers = torch.linspace(-torch.pi, +torch.pi, feature1_num_tc + 1)[:-1]
         self.probe_tuning_scales = torch.ones_like(self.probe_centers) * feature_0_num_width
         self.report_tuning_scales = torch.ones_like(self.report_centers) * feature_1_num_width
 

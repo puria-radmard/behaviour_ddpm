@@ -231,52 +231,33 @@ class ZeroTemperatureSwapProbabilityTaskVariableGenerator(
     def display_task_variables(
         self, task_variable_information: Dict[str, _T], *axes: Axes
     ) -> None:
-        assert len(axes) >= 1
-        axes[0].set_title("Report feature values\nwith probability of swapping to item")
-        axes[0].add_patch(plt.Circle((0, 0), 1.0, color="red", fill=False))
-        axes[0].scatter(*task_variable_information["report_features_cart"][0].T, s=50)
-        for i, prob in enumerate(task_variable_information["swap_probabilities"][0]):
-            prob = round(prob.item(), 3)
-            axes[0].annotate(
-                prob,
-                (
-                    task_variable_information["report_features_cart"][0, i, 0],
-                    task_variable_information["report_features_cart"][0, i, 1],
-                ),
-            )
-            if i == task_variable_information["cued_item_idx"][0]:
-                axes[0].add_patch(
-                    plt.Circle(
-                        task_variable_information["report_features_cart"][
-                            0, i
-                        ].tolist(),
-                        0.1,
-                        color="green",
-                        fill=False,
-                    )
-                )
+        assert len(axes) == len(self.cart_feature_names)
 
-        axes[1].set_title("Probe feature values\nwith probability of swapping to item")
-        axes[1].add_patch(plt.Circle((0, 0), 1.0, color="red", fill=False))
-        axes[1].scatter(*task_variable_information["probe_features_cart"][0].T, s=50)
-        for i, prob in enumerate(task_variable_information["swap_probabilities"][0]):
-            prob = round(prob.item(), 3)
-            axes[1].annotate(
-                prob,
-                (
-                    task_variable_information["probe_features_cart"][0, i, 0],
-                    task_variable_information["probe_features_cart"][0, i, 1],
-                ),
-            )
-            if i == task_variable_information["cued_item_idx"][0]:
-                axes[1].add_patch(
-                    plt.Circle(
-                        task_variable_information["probe_features_cart"][0, i].tolist(),
-                        0.1,
-                        color="green",
-                        fill=False,
-                    )
+        for ax, fname in zip(axes, self.cart_feature_names):
+
+            ax.set_title(f"{fname} values\nwith probability of swapping to item")
+            ax.add_patch(plt.Circle((0, 0), 1.0, color="red", fill=False))
+            ax.scatter(*task_variable_information[fname][0].T, s=50)
+            for i, prob in enumerate(task_variable_information["swap_probabilities"][0]):
+                prob = round(prob.item(), 3)
+                ax.annotate(
+                    prob,
+                    (
+                        task_variable_information[fname][0, i, 0],
+                        task_variable_information[fname][0, i, 1],
+                    ),
                 )
+                if i == task_variable_information["cued_item_idx"][0]:
+                    ax.add_patch(
+                        plt.Circle(
+                            task_variable_information[fname][
+                                0, i
+                            ].tolist(),
+                            0.1,
+                            color="green",
+                            fill=False,
+                        )
+                    )
 
 
 class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
@@ -429,7 +410,7 @@ class AmbiguousProbeDistanceProbabilityTaskVariableGenerator(ProbeDistanceProbab
 
     trial_types = ['feature0 probes', 'feature1 probes']
 
-    cart_feature_names = ['feature0_probe', 'feature1_probe']
+    cart_feature_names = ['feature0_cart', 'feature1_cart']
 
 
     task_variable_keys = {

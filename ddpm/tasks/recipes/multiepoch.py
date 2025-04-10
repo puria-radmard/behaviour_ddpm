@@ -174,8 +174,8 @@ def delayed_ambiguous_probe_cue_vectoral_with_swap_function_palimpsest(
     pre_index_delay_duration,
     index_duration,
     post_index_delay_duration,
-    feature_0_num_tc,
-    feature_1_num_tc,
+    feature0_num_tc,
+    feature1_num_tc,
     feature_0_num_width,
     feature_1_num_width,
     vectorise_input: bool = True,
@@ -192,8 +192,8 @@ def delayed_ambiguous_probe_cue_vectoral_with_swap_function_palimpsest(
     )
     sensory_gen = DelayedAmbiguousProbeCuingSensoryGeneratorWithMemoryPalimpsest(
         num_items=num_items,
-        feature_0_num_tc=feature_0_num_tc,
-        feature_1_num_tc=feature_1_num_tc,
+        feature0_num_tc=feature0_num_tc,
+        feature1_num_tc=feature1_num_tc,
         feature_0_num_width=feature_0_num_width,
         feature_1_num_width=feature_1_num_width,
         vectorise_input=vectorise_input,
