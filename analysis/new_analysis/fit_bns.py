@@ -15,7 +15,7 @@ from purias_utils.error_modelling_torus.non_parametric_error_model.setup_utils i
 # base_dir_name = 'ddpm_curriculum_activity_reg_20250322'
 # base_dir_name = 'hvae_direct_param_20250327'
 # base_dir_name = 'hvae_with_bounceback_20250330'
-base_dir_name = 'hvae_with_dendritic_20250104'
+base_dir_name = 'hvae_with_axonal_20250404'
 
 
 analysis_args = ConfigNamepace.from_yaml_path(sys.argv[1], strict_access = True)

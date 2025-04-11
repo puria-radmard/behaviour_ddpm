@@ -1,7 +1,7 @@
 # 20250404
 
 # Model
-model_name: hvae_delayed_probe_cue_factorised_palimpsest_representation_dendritic
+model_name: hvae_delayed_probe_cue_factorised_palimpsest_representation_axonal
 model_config:
   sample_ambient_dim: 16
   time_embedding_size: 8
@@ -39,16 +39,14 @@ batch_size: 32
 num_samples: 512
 num_trials: 10_000_000
 lr: 0.005
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_b5b_probe_cued_diffusion_cyclical_swap_tigher"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_axonal_20250404/run_b4_probe_cued_diffusion_flat_swap"
 
 
-# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_b5_probe_cued_diffusion_cyclical_swap_0/state.mdl"
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_b5b_probe_cued_diffusion_cyclical_swap_tigher_0/state.mdl"
-
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_axonal_20250404/run_b3_probe_cued_diffusion_no_swap_0/state.mdl"
 
 
 # Task
-task_name: delayed_probe_cue_vectoral_with_swap_function_palimpsest
+task_name: delayed_probe_cue_vectoral_spike_and_slab_palimpsest
 task_config:
 
   probe_num_tc: 16
@@ -60,7 +58,7 @@ task_config:
 
   sample_size: 2
   num_items: 2
-  swap_function_width: 0.5
+  correct_probability: 0.7
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
 
@@ -68,4 +66,3 @@ task_config:
   pre_index_delay_duration: [15, 15]
   index_duration: 5
   post_index_delay_duration: 1
-

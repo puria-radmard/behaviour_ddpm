@@ -33,16 +33,17 @@ num_timesteps: 40
 
 
 
+
 # Training/logging
 logging_freq: 1000
 batch_size: 32
 num_samples: 512
 num_trials: 10_000_000
-lr: 0.005
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_b4_probe_cued_diffusion_flat_swap"
+lr: 0.001
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a4_probe_cued_diffusion_flat_swap"
 
 
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_b3_probe_cued_diffusion_no_swap_0/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a3_probe_cued_diffusion_no_swap/state.mdl"
 
 
 # Task
@@ -58,7 +59,7 @@ task_config:
 
   sample_size: 2
   num_items: 2
-  correct_probability: 0.7
+  correct_probability: 1.0
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
 

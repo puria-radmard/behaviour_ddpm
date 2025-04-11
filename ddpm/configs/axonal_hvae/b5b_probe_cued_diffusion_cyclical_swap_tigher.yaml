@@ -1,7 +1,7 @@
 # 20250404
 
 # Model
-model_name: hvae_delayed_probe_cue_factorised_palimpsest_representation_dendritic
+model_name: hvae_delayed_probe_cue_factorised_palimpsest_representation_axonal
 model_config:
   sample_ambient_dim: 16
   time_embedding_size: 8
@@ -10,7 +10,7 @@ model_config:
   bias: false
   residual_model_kwargs: {}
   ddpm_model_kwargs:
-    train_as_rnn: true            # XXX
+    train_as_rnn: false
     noise_scaler: 'nat'
     seperate_output_neurons: false
 
@@ -39,27 +39,28 @@ batch_size: 32
 num_samples: 512
 num_trials: 10_000_000
 lr: 0.005
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_c_probe_cued_rnn_no_swap"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_axonal_20250404/run_b5b_probe_cued_diffusion_cyclical_swap_tigher"
 
 
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250104/run_b2_probe_cued_rnn_no_swap_0/state.mdl"
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_axonal_20250404/run_b5_probe_cued_diffusion_cyclical_swap_0/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_axonal_20250404/run_b5b_probe_cued_diffusion_cyclical_swap_tigher_0/state.mdl"
 
 
 
 # Task
-task_name: delayed_ambiguous_probe_cue_vectoral_spike_and_slab_palimpsest
+task_name: delayed_probe_cue_vectoral_with_swap_function_palimpsest
 task_config:
 
-  feature0_num_tc: 16
-  feature1_num_tc: 16
-  feature0_tc_width: 5.0
-  feature1_tc_width: 5.0
+  probe_num_tc: 16
+  report_num_tc: 16
+  probe_tc_width: 5.0
+  report_tc_width: 5.0
 
   vectorise_input: false
 
   sample_size: 2
   num_items: 2
-  correct_probability: 1.0
+  swap_function_width: 0.5
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
 
