@@ -1,4 +1,4 @@
-run_name: 'run_a2_probe_cued_rnn_no_swap_0'
+run_name: 'run_a6_probe_cued_diffusion_sharp_swap_2'
 ctd_batch_size: 1024
 num_opt_steps: 50_000
 cued_feature: probe

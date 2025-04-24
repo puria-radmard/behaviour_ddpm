@@ -83,8 +83,9 @@ sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 task: MultiEpochDiffusionTask = getattr(tasks, task_name)(**task_config.dict)
 task.save_metadata(os.path.join(save_base, "task_metadata"))
-all_individual_residual_mses_per_trial_type = {trial_type: np.zeros([num_trials, num_timesteps]) for trial_type in task.task_variable_gen.trial_types}
-all_individual_residual_mses_per_trial_type['all'] = np.zeros([num_trials, num_timesteps])
+all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
+all_trial_type_trial_indices = {trial_type: [] for trial_type in task.task_variable_gen.trial_types}
+all_trial_type_trial_indices['all'] = []
 if len(task.task_variable_gen.trial_types) == 1:
     assert task.task_variable_gen.trial_types[0] == 'all'
 
@@ -236,20 +237,11 @@ for t in tqdm(range(num_trials)):
 
     if t >= plotting_start:
 
-        if len(all_individual_residual_mses_per_trial_type) == 1:
+        if len(all_trial_type_trial_indices) == 1:
             assert 'trial_type_idx' not in trial_information.task_variable_information
-            all_individual_residual_mses_per_trial_type['all'][t - plotting_start, :] = (
-                residual_mse.detach().cpu().mean(0).mean(0)
-            )
-        else:
-            all_individual_residual_mses_per_trial_type['all'][t - plotting_start, :] = (
-                residual_mse.detach().cpu().mean(0).mean(0)
-            )
-            for trial_type_i, trial_type in enumerate(task.task_variable_gen.trial_types):
-                trial_mask = (trial_information.task_variable_information['trial_type_idx'] == trial_type_i)
-                all_individual_residual_mses_per_trial_type[trial_type][t - plotting_start, :] = (
-                    residual_mse[trial_mask].detach().cpu().mean(0).mean(0)
-                )
+        all_individual_residual_mses[t - plotting_start, :] = (
+            residual_mse.detach().cpu().mean(0).mean(0)
+        )
 
         all_prep_state_losses[t - plotting_start] = prep_state_loss.detach().cpu()
         all_delay_activity_losses[t - plotting_start] = delay_activity_loss.detach().cpu()
@@ -269,7 +261,7 @@ for t in tqdm(range(num_trials)):
             training_step = t, plotting_start = plotting_start,
             diffusion_cmap = kl_colors_scalarMap,
             num_timesteps = num_timesteps, 
-            all_individual_residual_mses = all_individual_residual_mses_per_trial_type['all'], 
+            all_individual_residual_mses = all_individual_residual_mses[all_trial_type_trial_indices['all']], 
             all_prep_state_losses = all_prep_state_losses, 
             all_delay_activity_losses = all_delay_activity_losses,
             trial_type_name = 'all'
@@ -319,8 +311,7 @@ for t in tqdm(range(num_trials)):
                 num_timesteps = num_timesteps, 
                 diffusion_cmap = kl_colors_scalarMap, 
                 trial_type_name = test_trial_type,
-                all_individual_residual_mses = all_individual_residual_mses_per_trial_type[test_trial_type]
- 
+                all_individual_residual_mses = all_individual_residual_mses[all_trial_type_trial_indices[test_trial_type]]
             )
 
             if 'palimpsest' in task_name:

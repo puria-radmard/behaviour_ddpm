@@ -15,7 +15,8 @@ from purias_utils.error_modelling_torus.non_parametric_error_model.setup_utils i
 # base_dir_name = 'ddpm_curriculum_activity_reg_20250322'
 # base_dir_name = 'hvae_direct_param_20250327'
 # base_dir_name = 'hvae_with_bounceback_20250330'
-base_dir_name = 'hvae_with_axonal_20250404'
+# base_dir_name = 'hvae_with_axonal_20250404'
+base_dir_name = 'hvae_with_dendritic_20250410'
 
 
 analysis_args = ConfigNamepace.from_yaml_path(sys.argv[1], strict_access = True)
@@ -51,7 +52,7 @@ normalisation_inner = 'exp'
 inducing_point_variational_parameterisation_type = 'gaussian'
 init_min_seps = False
 all_set_sizes = [2]
-R_per_dim = 12
+R_per_dim = 36
 fix_inducing_point_locations = False
 fix_non_swap = True
 include_pi_1_tilde = False
@@ -237,11 +238,14 @@ for i in tqdm(range(10_000)):
         axes['C'].set_ylim(y_bot, y_top)
         axes['C'].set_xlim(-torch.pi, torch.pi)
 
-        if 'cyclical' in run_name:
-            cued_probe_sq_distance = rectify_angles(deltas_batch).square()
 
-            true_swap_func = -0.5 * (deltas_batch.square() / (2.0 + 2e-5))
-            axes['C'].scatter(deltas_batch[0].flatten(), true_swap_func.flatten(), color = 'red', alpha = 0.4, s = 5)
+        if 'swap_func' in trial_information.task_variable_information:
+            # true_swap_func = -0.5 * (deltas_batch.square() / (2.0 + 2e-5))
+            all_true_swap_function = trial_information.task_variable_information['swap_func']
+            true_swap_function = torch.zeros_like(all_probe_values)
+            true_swap_function[torch.arange(batch_size),0] = all_true_swap_function[torch.arange(batch_size),cued_idx]
+            true_swap_function[torch.arange(batch_size),1] = all_true_swap_function[torch.arange(batch_size),1-cued_idx]
+            axes['C'].scatter(deltas_batch[0].flatten(), true_swap_function.flatten(), color = 'red', alpha = 0.4, s = 5)
 
 
         standard_swap_model_simplex_plots(training_info['priors'][0].detach().cpu().numpy(), axes['D'])

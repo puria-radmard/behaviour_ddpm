@@ -162,7 +162,6 @@ def delayed_probe_cue_vectoral_with_swap_function(
 def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
     sample_size,
     num_items,
-    swap_function_width,
     stimulus_exposure_duration,
     pre_index_delay_duration,
     index_duration,
@@ -171,12 +170,17 @@ def delayed_probe_cue_vectoral_with_swap_function_palimpsest(
     report_num_tc,
     probe_tc_width,
     report_tc_width,
+    swap_function_width: Optional[float] = None,
+    swap_function_width_sharp: Optional[float] = None,
+    sharp_swap_func_logit: Optional[float] = None,
     vectorise_input: bool = True,
     **sample_kwargs
 ):
     task_variable_gen = ProbeDistanceProbabilityTaskVariableGenerator(
         num_items = num_items,
         swap_function_width = swap_function_width,
+        swap_function_width_sharp = swap_function_width_sharp,
+        sharp_swap_func_logit = sharp_swap_func_logit,
         stimulus_exposure_duration = stimulus_exposure_duration,
         pre_index_delay_duration = pre_index_delay_duration,
         index_duration = index_duration,

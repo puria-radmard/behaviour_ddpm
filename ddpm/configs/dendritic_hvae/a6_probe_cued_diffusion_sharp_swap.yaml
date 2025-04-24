@@ -10,7 +10,7 @@ model_config:
   bias: false
   residual_model_kwargs: {}
   ddpm_model_kwargs:
-    train_as_rnn: true
+    train_as_rnn: false
     noise_scaler: 'nat'
     seperate_output_neurons: false
 
@@ -40,15 +40,15 @@ batch_size: 32
 num_samples: 512
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a2_probe_cued_rnn_no_swap"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a6_probe_cued_diffusion_sharp_swap"
 
 
-# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a_probe_cued_rnn_no_swap_short_0/state.mdl"
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a2_probe_cued_rnn_no_swap_0/state.mdl"
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a5_probe_cued_diffusion_cyclical_swap_0/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a6_probe_cued_diffusion_sharp_swap_1/state.mdl"
 
 
 # Task
-task_name: delayed_probe_cue_vectoral_spike_and_slab_palimpsest
+task_name: delayed_probe_cue_vectoral_with_swap_function_palimpsest
 task_config:
 
   probe_num_tc: 16
@@ -60,7 +60,8 @@ task_config:
 
   sample_size: 2
   num_items: 2
-  correct_probability: 1.0
+  swap_function_width_sharp: 2.0    # Changed from 1.5
+  sharp_swap_func_logit: 0.15
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
 
@@ -68,3 +69,4 @@ task_config:
   pre_index_delay_duration: [15, 15]
   index_duration: 5
   post_index_delay_duration: 1
+

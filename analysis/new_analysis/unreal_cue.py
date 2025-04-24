@@ -1,21 +1,52 @@
-from analysis.decoder_analysis.shared_setup import *
+
+
+from matplotlib import pyplot as plt, colors, cm as cmx
+
+import torch, sys, os
+import numpy as np
+
+from purias_utils.util.arguments_yaml import ConfigNamepace
+
+from ddpm.utils.loading import generate_model_and_task_from_args_path_multiepoch
+
+
 from ddpm.tasks.main.multiepoch import MultiepochTrialInformation
 
+from purias_utils.util.logging import configure_logging_paths
 
-save_path = os.path.join(analysis_args.save_base, yaml_name)
-try:
-    os.mkdir(save_path)
-except FileExistsError:
-    print('OVERWRITING RESULTS')
+base_dir_name = 'hvae_with_dendritic_20250410'
+
+
+analysis_args = ConfigNamepace.from_yaml_path(sys.argv[1], strict_access = True)
+yaml_name = sys.argv[1].split('/')[-1].split('.')[0]
+save_base = '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/unreal_cue'
+save_path = os.path.join(save_base, yaml_name)
+print(save_path)
+
+_, save_path, _ = configure_logging_paths(save_path, [])
 analysis_args.write_to_yaml(os.path.join(save_path, "args.yaml"))
 
 
-num_samples = analysis_args.num_samples
+print(save_path)
+
+
+run_name = analysis_args.run_name
+
+
+device = 'cuda'
+_, task, ddpm_model, _, _ = generate_model_and_task_from_args_path_multiepoch(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/args.yaml', device)
+num_neurons = ddpm_model.sample_ambient_dims[-1]
+ddpm_model.load_state_dict(torch.load(f'/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/{base_dir_name}/{run_name}/state.mdl', weights_only=True))
+
+
+
+num_cue_gridpoints = 100
+num_samples = 100
 
 fixed_delay_duration = max(task.task_variable_gen.prep_epoch_durations[1])
 
 
-batch_size = 2 + analysis_args.num_cue_gridpoints       # These will have the same report, only the cue will be gridded amongst them!
+batch_size = 2 + num_cue_gridpoints       # These will have the same report, only the cue will be gridded amongst them!
 
 
 fixed_probe_locations = torch.tensor([- torch.pi/2, + torch.pi/2])
@@ -23,7 +54,7 @@ fixed_report_locations = torch.tensor([0, + torch.pi/2])
 
 # assert (fixed_report_locations[1] - fixed_report_locations[0]).abs() > torch.pi / 2, "Using swap probability heuristic!"
 
-cues_to_try = torch.linspace(-torch.pi, +torch.pi, analysis_args.num_cue_gridpoints + 1)[:-1]
+cues_to_try = torch.linspace(-torch.pi, +torch.pi, num_cue_gridpoints + 1)[:-1]
 cues_to_try = torch.concat([fixed_probe_locations, cues_to_try])
 
 fixed_probe_locations_cart = torch.stack([fixed_probe_locations.cos(), fixed_probe_locations.sin()], -1)
@@ -95,10 +126,10 @@ all_hists.append(axes[0].hist(final_samples[0], label = 'Real probe 1', bins = 6
 all_hists.append(axes[0].hist(final_samples[1], label = 'Real probe 2', bins = 64, fc='none', density = False, histtype='step', color = 'green'))
 
 magma = plt.get_cmap("magma")
-cNorm = colors.Normalize(vmin=1, vmax=analysis_args.num_cue_gridpoints)
+cNorm = colors.Normalize(vmin=1, vmax=num_cue_gridpoints)
 kl_colors_scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=magma)
 kl_colors_scalarMap.set_array([])
-for j in range(analysis_args.num_cue_gridpoints):
+for j in range(num_cue_gridpoints):
     color = kl_colors_scalarMap.to_rgba(j + 1)
     all_hists.append(axes[0].hist(final_samples[j+2], bins = 64, fc='none', density = False, histtype='step', color = color))
     

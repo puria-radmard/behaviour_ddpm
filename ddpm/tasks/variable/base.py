@@ -103,7 +103,7 @@ class TaskVariableGenerator(ABC):
     trial_types: List[str] = ['all']  # See e.g. generate_representative_variable_dict
 
     @abstractmethod
-    def generate_variable_dict(self, batch_size: int, *args, **kwargs) -> Dict[str, _T]:
+    def generate_variable_dict(self, batch_size: int, *args, override_stimulus_features_dict: Optional[Dict[str, _T]] = None, **kwargs) -> Dict[str, _T]:
         raise NotImplementedError
 
     def generate_representative_variable_dict(self, *args, **kwargs) -> Dict[str, _T]:
@@ -144,8 +144,11 @@ class StandardCartesianWMTaskVariableGenerator(TaskVariableGenerator, ABC):
     def generate_probability_vectors(self, variable_dict: Dict[str, _T]) -> _T:
         raise NotImplementedError
 
-    def generate_variable_dict(self, batch_size: int) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep)
+    def generate_variable_dict(self, batch_size: int, *_, override_stimulus_features_dict: Optional[Dict[str, _T]] = None) -> Dict[str, _T]:
+        if override_stimulus_features_dict is None:
+            ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep)
+        else:
+            ret = override_stimulus_features_dict
         probability_vector_task_variables = self.generate_probability_vectors(ret)
         ret.update(probability_vector_task_variables)
         return ret
@@ -221,7 +224,12 @@ class ZeroTemperatureSwapProbabilityTaskVariableGenerator(
             self.num_items,
         )
         probability_vector = torch.zeros(batch_size, self.num_items)
-        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        if 'cued_item_idx' not in variable_dict:
+            selected_item = torch.randint(0, self.num_items, (batch_size,))
+        else:
+            selected_item = variable_dict['cued_item_idx']
+            assert tuple(selected_item.shape) == (batch_size,)
+            assert set(selected_item.unique().tolist()).issubset(set(range(self.num_items)))
         probability_vector[range(batch_size), selected_item] = 1.0
         return {
             "swap_probabilities": probability_vector,
@@ -234,7 +242,6 @@ class ZeroTemperatureSwapProbabilityTaskVariableGenerator(
         assert len(axes) == len(self.cart_feature_names)
 
         for ax, fname in zip(axes, self.cart_feature_names):
-
             ax.set_title(f"{fname} values\nwith probability of swapping to item")
             ax.add_patch(plt.Circle((0, 0), 1.0, color="red", fill=False))
             ax.scatter(*task_variable_information[fname][batch_idx].T, s=50)
@@ -304,7 +311,13 @@ class SpikeAndSlabSwapProbabilityTaskVariableGenerator(
             batch_size,
             self.num_items,
         )
-        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        if 'cued_item_idx' not in variable_dict:
+            selected_item = torch.randint(0, self.num_items, (batch_size,))
+        else:
+            print('USING PRECUED ITEMS - SHOULD NEVER BE DONE IN TRAINING')
+            selected_item = variable_dict['cued_item_idx']
+            assert tuple(selected_item.shape) == (batch_size,)
+            assert set(selected_item.unique().tolist()).issubset(set(range(self.num_items)))
         selected_item_mask = torch.zeros(batch_size, self.num_items).bool()
         selected_item_mask[range(batch_size), selected_item] = True
         if self.num_items > 1:
@@ -361,7 +374,12 @@ class AmbiguousSpikeAndSlabSwapProbabilityTaskVariableGenerator(SpikeAndSlabSwap
             batch_size,
             self.num_items,
         )
-        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        if 'cued_item_idx' not in variable_dict:
+            selected_item = torch.randint(0, self.num_items, (batch_size,))
+        else:
+            selected_item = variable_dict['cued_item_idx']
+            assert tuple(selected_item.shape) == (batch_size,)
+            assert set(selected_item.unique().tolist()).issubset(set(range(self.num_items)))
         selected_item_mask = torch.zeros(batch_size, self.num_items).bool()
         selected_item_mask[range(batch_size), selected_item] = True
         if self.num_items > 1:
@@ -391,14 +409,20 @@ class AmbiguousSpikeAndSlabSwapProbabilityTaskVariableGenerator(SpikeAndSlabSwap
             "diffusion_epoch_durations": self.diffusion_epoch_durations,
         }
 
-    def generate_variable_dict(self, batch_size: int) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep, feature_names=['feature0', 'feature1'])
+    def generate_variable_dict(self, batch_size: int, *_, override_stimulus_features_dict: Optional[Dict[str, _T]] = None) -> Dict[str, _T]:
+        if override_stimulus_features_dict is None:
+            ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep, feature_names=['feature0', 'feature1'])
+        else:
+            ret = override_stimulus_features_dict
         probability_vector_task_variables = self.generate_probability_vectors(ret)
         ret.update(probability_vector_task_variables)
         return ret
 
-    def generate_representative_variable_dict(self, *args, **kwargs) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items, 2, self.min_sep, feature_names=['feature0', 'feature1'])
+    def generate_representative_variable_dict(self, *args, override_stimulus_features_dict: Optional[Dict[str, _T]] = None) -> Dict[str, _T]:
+        if override_stimulus_features_dict is None:
+            ret = generate_stimulus_features(self.num_items, 2, self.min_sep, feature_names=['feature0', 'feature1'])
+        else:
+            ret = override_stimulus_features_dict
         probability_vector_task_variables = self.generate_probability_vectors(ret, override_probing_feature_idx = torch.tensor([0, 1]))
         ret.update(probability_vector_task_variables)
         return ret
@@ -420,17 +444,25 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
     def __init__(
         self,
         num_items: int,
-        swap_function_width: float,
         stimulus_exposure_duration: int,
         pre_index_delay_duration: int | List[int],
         index_duration: int,
         post_index_delay_duration: int,
+        swap_function_width: Optional[float] = None,
+        swap_function_width_sharp: Optional[float] = None,
+        sharp_swap_func_logit: Optional[float] = None,
     ) -> None:
         super().__init__(num_items)
         self.task_variable_keys = self.task_variable_keys.union(
             {"cued_item_idx", "prep_epoch_durations", "diffusion_epoch_durations"}
         )
+        assert (swap_function_width is None) != (swap_function_width_sharp is None)
+        self.swap_mode = 'sharp' if swap_function_width is None else 'smooth'
         self.swap_function_width = swap_function_width
+        self.swap_function_width_sharp = swap_function_width_sharp
+        if sharp_swap_func_logit is not None:
+            self.sharp_swap_func_logit = sharp_swap_func_logit
+            assert self.swap_mode == 'sharp'
         self.prep_epoch_durations = [stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration]
         self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
 
@@ -455,17 +487,32 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
             batch_size,
             self.num_items,
         )
-        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        if 'cued_item_idx' not in variable_dict:
+            selected_item = torch.randint(0, self.num_items, (batch_size,))
+        else:
+            selected_item = variable_dict['cued_item_idx']
+            assert tuple(selected_item.shape) == (batch_size,)
+            assert set(selected_item.unique().tolist()).issubset(set(range(self.num_items)))
         selected_item_mask = torch.zeros(batch_size, self.num_items).bool()
         selected_item_mask[range(batch_size), selected_item] = True
 
         cued_probe = variable_dict["probe_features"][range(batch_size), selected_item].unsqueeze(-1)
         cued_probe_sq_distance = rectify_angles(variable_dict["probe_features"] - cued_probe).square()
-        swap_func = -0.5 * (cued_probe_sq_distance / (self.swap_function_width + 2e-5))
+        
+        if self.swap_mode == 'smooth':
+            swap_func = -0.5 * (cued_probe_sq_distance / (self.swap_function_width + 2e-5))
+        else:
+            in_swapping_range_mask = cued_probe_sq_distance.sqrt() < self.swap_function_width_sharp
+            swap_func = torch.zeros_like(cued_probe_sq_distance)
+            swap_func[in_swapping_range_mask] = self.sharp_swap_func_logit
+            swap_func[~in_swapping_range_mask] = -float('inf')
+            swap_func[range(batch_size), selected_item] = 1.0
+
         probability_vector = swap_func.softmax(-1)
 
         # assert set(probability_vector.sum(-1).unique().tolist()) == {1.0}
         return {
+            "swap_func": swap_func,
             "swap_probabilities": probability_vector,
             "cued_item_idx": selected_item,
             "prep_epoch_durations": self.generate_prep_epoch_durations(),
@@ -529,7 +576,12 @@ class AmbiguousProbeDistanceProbabilityTaskVariableGenerator(ProbeDistanceProbab
             batch_size,
             self.num_items,
         )
-        selected_item = torch.randint(0, self.num_items, (batch_size,))
+        if 'cued_item_idx' not in variable_dict:
+            selected_item = torch.randint(0, self.num_items, (batch_size,))
+        else:
+            selected_item = variable_dict['cued_item_idx']
+            assert tuple(selected_item.shape) == (batch_size,)
+            assert set(selected_item.unique().tolist()).issubset(set(range(self.num_items)))
         selected_item_mask = torch.zeros(batch_size, self.num_items).bool()
         selected_item_mask[range(batch_size), selected_item] = True
 
@@ -549,7 +601,7 @@ class AmbiguousProbeDistanceProbabilityTaskVariableGenerator(ProbeDistanceProbab
         cued_feature0 = variable_dict["feature0"][range(batch_size), selected_item].unsqueeze(-1)
         cued_feature[feature0_probing] = cued_feature0[feature0_probing]
 
-        all_probe_features = variable_dict["feature1"]
+        all_probe_features = variable_dict["feature1"].clone()
         all_probe_features[feature0_probing] = variable_dict["feature0"][feature0_probing]
         
         cued_probe_sq_distance = rectify_angles(all_probe_features - cued_feature).square() # [B, N]
@@ -557,6 +609,7 @@ class AmbiguousProbeDistanceProbabilityTaskVariableGenerator(ProbeDistanceProbab
         probability_vector = swap_func.softmax(-1)
 
         return {
+            "swap_func": swap_func,
             "swap_probabilities": probability_vector,
             "cued_item_idx": selected_item,
             "probing_feature_idx": probing_feature_idx,
@@ -566,14 +619,20 @@ class AmbiguousProbeDistanceProbabilityTaskVariableGenerator(ProbeDistanceProbab
             "diffusion_epoch_durations": self.diffusion_epoch_durations
         }
 
-    def generate_variable_dict(self, batch_size: int) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep, feature_names=['feature0', 'feature1'])
+    def generate_variable_dict(self, batch_size: int, *_, override_stimulus_features_dict: Optional[Dict[str, _T]] = None) -> Dict[str, _T]:
+        if override_stimulus_features_dict is None:
+            ret = generate_stimulus_features(self.num_items, batch_size, self.min_sep, feature_names=['feature0', 'feature1'])
+        else:
+            ret = override_stimulus_features_dict
         probability_vector_task_variables = self.generate_probability_vectors(ret)
         ret.update(probability_vector_task_variables)
         return ret
 
-    def generate_representative_variable_dict(self, *args, **kwargs) -> Dict[str, _T]:
-        ret = generate_stimulus_features(self.num_items, 2, self.min_sep, feature_names=['feature0', 'feature1'])
+    def generate_representative_variable_dict(self, *_, override_stimulus_features_dict: Optional[Dict[str, _T]] = None) -> Dict[str, _T]:
+        if override_stimulus_features_dict is None:
+            ret = generate_stimulus_features(self.num_items, 2, self.min_sep, feature_names=['feature0', 'feature1'])
+        else:
+            ret = override_stimulus_features_dict
         probability_vector_task_variables = self.generate_probability_vectors(ret, override_probing_feature_idx = torch.tensor([0, 1]))
         ret.update(probability_vector_task_variables)
         return ret

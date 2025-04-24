@@ -242,8 +242,8 @@ class AmbiguousVectoralEmbeddedExampleSampleGenerator(VectoralEmbeddedExampleSam
         selected_item_idx = torch.multinomial(selection_pmf, num_samples, replacement=True)  # [batch, sample]
         batch_idx = torch.arange(batch_size, device=variable_dict['feature0'].device)[:, None].expand(batch_size, num_samples)  # [batch, sample]
 
-        reporting_cartesians = variable_dict['feature0_cart']
-        reporting_cartesians1 = variable_dict['feature1_cart']
+        reporting_cartesians = variable_dict['feature0_cart'].clone()
+        reporting_cartesians1 = variable_dict['feature1_cart'].clone()
         reporting_cartesians[variable_dict['reporting_feature_idx'] == 1] = reporting_cartesians1[variable_dict['reporting_feature_idx'] == 1]
         selected_cartesian = reporting_cartesians[batch_idx, selected_item_idx]
 
