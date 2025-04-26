@@ -43,7 +43,8 @@ lr: 0.001
 save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a4_probe_cued_diffusion_flat_swap"
 
 
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a3_probe_cued_diffusion_no_swap_0/state.mdl"
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a3_probe_cued_diffusion_no_swap_0/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a4_probe_cued_diffusion_flat_swap_0/state.mdl"
 
 
 # Task
