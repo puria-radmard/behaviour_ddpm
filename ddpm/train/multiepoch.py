@@ -231,6 +231,11 @@ for t in tqdm(range(num_trials)):
     total_loss.backward()
     optim.step()
 
+    if 'trial_type_idx' in trial_information.task_variable_information:
+        import pdb; pdb.set_trace()
+    else:
+        all_trial_type_trial_indices['all'].append(t)
+
     if t % 100_000 == 0:
         torch.save(ddpm_model.state_dict(), os.path.join(save_base, f"state.{t}.mdl"))
         torch.save(optim.state_dict(), os.path.join(save_base, f"opt_state.{t}.mdl"))
@@ -253,7 +258,6 @@ for t in tqdm(range(num_trials)):
         # fig, axes = plt.subplots(3, 5, figsize=(25, 15))
         fig, axes = plt.subplots(1 + 2 * len(task.task_variable_gen.trial_types), 7, figsize=(35, 5 * (1 + 2 * len(task.task_variable_gen.trial_types))))
 
-        # TODO: split up losses!
         plot_standard_losses_multiepoch(
             mse_ax = axes[0, 0], mean_mse_ax = axes[0, 1], 
             zoomed_mse_ax = axes[0, 2], zoomed_mean_mse_ax = axes[0, 3], 

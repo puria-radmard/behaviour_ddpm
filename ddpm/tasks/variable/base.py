@@ -451,6 +451,7 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         swap_function_width: Optional[float] = None,
         swap_function_width_sharp: Optional[float] = None,
         sharp_swap_func_logit: Optional[float] = None,
+        swap_function_offset: Optional[float] = None,
     ) -> None:
         super().__init__(num_items)
         self.task_variable_keys = self.task_variable_keys.union(
@@ -459,10 +460,12 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         assert (swap_function_width is None) != (swap_function_width_sharp is None)
         self.swap_mode = 'sharp' if swap_function_width is None else 'smooth'
         self.swap_function_width = swap_function_width
+        self.swap_function_offset = swap_function_offset
         self.swap_function_width_sharp = swap_function_width_sharp
         if sharp_swap_func_logit is not None:
             self.sharp_swap_func_logit = sharp_swap_func_logit
             assert self.swap_mode == 'sharp'
+            assert swap_function_offset is None
         self.prep_epoch_durations = [stimulus_exposure_duration, pre_index_delay_duration, index_duration, post_index_delay_duration]
         self.diffusion_epoch_durations = [None] # this will just be taken as the full duration by the ddpm
 
@@ -490,6 +493,7 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         if 'cued_item_idx' not in variable_dict:
             selected_item = torch.randint(0, self.num_items, (batch_size,))
         else:
+            print('USING PRECUED ITEMS - SHOULD NEVER BE DONE IN TRAINING')
             selected_item = variable_dict['cued_item_idx']
             assert tuple(selected_item.shape) == (batch_size,)
             assert set(selected_item.unique().tolist()).issubset(set(range(self.num_items)))
@@ -500,7 +504,8 @@ class ProbeDistanceProbabilityTaskVariableGenerator(
         cued_probe_sq_distance = rectify_angles(variable_dict["probe_features"] - cued_probe).square()
         
         if self.swap_mode == 'smooth':
-            swap_func = -0.5 * (cued_probe_sq_distance / (self.swap_function_width + 2e-5))
+            swap_func = -0.5 * (cued_probe_sq_distance / (self.swap_function_width + 2e-5)) 
+            swap_func[range(batch_size), selected_item] -= self.swap_function_offset
         else:
             in_swapping_range_mask = cued_probe_sq_distance.sqrt() < self.swap_function_width_sharp
             swap_func = torch.zeros_like(cued_probe_sq_distance)
