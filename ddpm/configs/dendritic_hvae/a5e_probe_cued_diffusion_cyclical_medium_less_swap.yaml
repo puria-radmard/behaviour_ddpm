@@ -40,11 +40,11 @@ batch_size: 32
 num_samples: 512
 num_trials: 10_000_000
 lr: 0.001
-save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a5b_probe_cued_diffusion_cyclical_less_swap"
+save_base: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a5e_probe_cued_diffusion_cyclical_medium_less_swap"
 
 
-# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a5_probe_cued_diffusion_cyclical_swap_0/state.mdl"
-resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a5b_probe_cued_diffusion_cyclical_less_swap_1/state.mdl"
+# resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a4_probe_cued_diffusion_flat_swap_0/state.mdl"
+resume_path: "/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/hvae_with_dendritic_20250410/run_a5_probe_cued_diffusion_cyclical_swap_1/state.mdl"
 
 
 # Task
@@ -61,7 +61,7 @@ task_config:
   sample_size: 2
   num_items: 2
   swap_function_width: 1.5
-  swap_function_offset: -2.0                  # Added this for more realistic swap rates! See "shared mechanisms" extended data figure 1
+  swap_function_offset: -1.0
   residual_in_behaviour_plane_only: false
   sample_radius: 2.5
 
