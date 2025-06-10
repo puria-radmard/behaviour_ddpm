@@ -2,6 +2,8 @@ import torch
 from torch import Tensor as _T
 import math
 from tqdm import tqdm
+from typing import Optional
+
 
 def pdf(x: _T) -> _T:
     return (1.0 / math.sqrt(2 * math.pi)) * torch.exp(-0.5 * x ** 2)
@@ -9,8 +11,12 @@ def pdf(x: _T) -> _T:
 def cdf(x: _T) -> _T:
     return 0.5 * (1 + torch.erf(x / math.sqrt(2)))
 
+
 def f(u: _T, k: float, n: int) -> _T:
-    return k * torch.pow(torch.relu(u), n)
+    if n == -1:
+        return k * u
+    else:
+        return k * torch.pow(torch.relu(u), n)
 
 
 def du_dt_deterministic(u: _T, h: _T, tau: float, W: _T, k: float, n: int, *_, parallelise_u: bool = False) -> _T:
@@ -18,12 +24,13 @@ def du_dt_deterministic(u: _T, h: _T, tau: float, W: _T, k: float, n: int, *_, p
     # W: [batch, trials, neurons, neurons]
     # h: [batch, neurons]
     r = f(u, k, n)  # [batch, trials, neurons]
+    
     # Einstein sum: batch,trials,neurons @ batch,trials,neurons,neurons -> batch,trials,neurons
     if parallelise_u:
-        Wr = torch.einsum('bkij,bkti->bktj', W, r)  # [batch, trials, time, neurons]
+        Wr = torch.einsum('bkij,bktj->bkti', W, r)  # [batch, trials, time, neurons]
         return ((-u + h.unsqueeze(1).unsqueeze(1) + Wr) / tau)
     else:
-        Wr = torch.einsum('bkij,bki->bkj', W, r)  # [batch, trials, neurons]
+        Wr = torch.einsum('bkij,bkj->bki', W, r)  # [batch, trials, neurons]
         return ((-u + h.unsqueeze(1) + Wr) / tau)
 
 def du_dt(u: _T, h: _T, tau: float, W: _T, dt: float, dxi: _T, k: float, n: int) -> _T:
@@ -42,6 +49,9 @@ def dmu_dt(mu: _T, h: _T, W: _T, nu: _T, tau: float) -> _T:
 
 def nu(n: int, k: float, mu: _T, Sigma: _T) -> _T:
     # mu: [batch, trials, neurons], Sigma: [batch, trials, neurons, neurons]
+    if n == -1:
+        return k * mu
+
     variance = torch.diagonal(Sigma, dim1=-2, dim2=-1)  # [batch, trials, neurons]
     if n == 1:
         stds = variance.sqrt()
@@ -55,13 +65,13 @@ def nu(n: int, k: float, mu: _T, Sigma: _T) -> _T:
     elif n > 2:
         return (mu * nu(n-1, k, mu, Sigma)) + ((n-1) * variance * nu(n-2, k, mu, Sigma))    # FIXME: extremely inefficient
 
-def dSigma0_dt(Sigma_xi: _T, J: _T, Sigma0: _T) -> _T:
+def dSigma0_dt(Sigma_xi: _T, J: _T, Sigma0: _T, tau: float) -> _T:
     # Sigma_xi: [neurons, neurons]
     # J: [batch, trials, neurons, neurons]
     # Sigma0: [batch, trials, neurons, neurons]
     JT = J.transpose(-1, -2)  # [batch, trials, neurons, neurons]
     # Broadcast Sigma_xi to match batch and trials dimensions
-    Sigma_xi_expanded = Sigma_xi.unsqueeze(0).unsqueeze(0)  # [1, 1, neurons, neurons]
+    Sigma_xi_expanded = (Sigma_xi).unsqueeze(0).unsqueeze(0)  # [1, 1, neurons, neurons]
     return Sigma_xi_expanded + torch.matmul(J, Sigma0) + torch.matmul(Sigma0, JT)
 
 def J(W: _T, tau: float, gammas: _T):
@@ -75,6 +85,9 @@ def J(W: _T, tau: float, gammas: _T):
 
 def gamma(n: int, k: float, mu: _T, Sigma: _T) -> _T:
     # mu: [batch, trials, neurons], Sigma: [batch, trials, neurons, neurons]
+    if n == -1:  # Linear case
+        return k * torch.ones_like(mu)  # gamma = k for linear case
+
     variance = torch.diagonal(Sigma, dim1=-2, dim2=-1)  # [batch, trials, neurons]
     if n == 1:
         stds = variance.sqrt()
@@ -104,8 +117,8 @@ def plot_ellipse(ax, mean, cov, color, alpha=0.3, label=None):
 def plot_time_series(ax, mean_us_stacked, mus_stacked, batch_idx, neurons):
     """Plot time series comparison between empirical and theoretical means"""
     for neuron in range(neurons):
-        line = ax.plot(mean_us_stacked[batch_idx, :, neuron], 
-                      label=f'Neuron {neuron} (empirical)')
+        line = ax.plot(mean_us_stacked[batch_idx, :, neuron])
+                      #label=f'Neuron {neuron} (empirical)')
         ax.plot(mus_stacked[batch_idx, :, neuron], 
                linestyle='--', color=line[0].get_color(), alpha=0.7)
     ax.set_xlabel('Timestep')
@@ -142,8 +155,9 @@ if __name__ == '__main__':
     for b in range(args.batch_size):
         eigvals = torch.linalg.eigvals(W[b, 0])
         spectral_radius = eigvals.abs().max()
-        W[b, 0] = W[b, 0] / (1.1 * spectral_radius)
-
+        scale = torch.rand(1) / 0.4 + 1.0
+        W[b, 0] = W[b, 0] / (scale * spectral_radius)
+    
     # Initial conditions
     # u: [batch, trials, neurons]
     u = torch.randn(args.batch_size, args.K, args.neurons)
@@ -161,7 +175,16 @@ if __name__ == '__main__':
     Sigma = torch.eye(args.neurons).unsqueeze(0).unsqueeze(0).repeat(args.batch_size, trials_target, 1, 1)
     mus = [mu.clone()]
 
-    for t in tqdm(range(args.timesteps)):
+    is_linear = (args.n == -1)
+
+    if is_linear:
+        # For linear case, we can compute J once since gamma is constant
+        gamma_val = gamma(args.n, args.k, mu, Sigma)  # [batch, trials, neurons]
+        J_val = J(W, args.tau, gamma_val)  # [batch, trials, neurons, neurons]
+
+    timesteps = int(args.duration / args.dt)
+
+    for t in tqdm(range(timesteps)):
         # Generate noise: [batch, trials, neurons]
         dxi = torch.randn(args.batch_size, args.K, args.neurons) @ Sigma_xi_chol.T * math.sqrt(args.dt)
 
@@ -171,11 +194,20 @@ if __name__ == '__main__':
         us.append(u.clone())
 
         # mu/Sigma dynamics
-        nu_val = nu(args.n, args.k, mu, Sigma)  # [batch, trials, neurons]
-        gamma_val = gamma(args.n, args.k, mu, Sigma)  # [batch, trials, neurons]
-        J_val = J(W, args.tau, gamma_val)  # [batch, trials, neurons, neurons]
-        dSigma = dSigma0_dt(Sigma_xi, J_val, Sigma)
-        dmu = dmu_dt(mu, h_batch, W, nu_val, args.tau)  # [batch, trials, neurons]
+        if is_linear:
+            # Linear case: nu and gamma don't depend on current state
+            nu_val = nu(args.n, args.k, mu, Sigma)  # [batch, trials, neurons]
+            # J_val already computed above and is constant
+            dSigma = dSigma0_dt(Sigma_xi, J_val, Sigma, args.tau)
+            dmu = dmu_dt(mu, h_batch, W, nu_val, args.tau)  # [batch, trials, neurons]
+        else:
+            # Nonlinear case: recompute everything
+            nu_val = nu(args.n, args.k, mu, Sigma)  # [batch, trials, neurons]
+            gamma_val = gamma(args.n, args.k, mu, Sigma)  # [batch, trials, neurons]
+            J_val = J(W, args.tau, gamma_val)  # [batch, trials, neurons, neurons]
+            dSigma = dSigma0_dt(Sigma_xi, J_val, Sigma, args.tau)
+            dmu = dmu_dt(mu, h_batch, W, nu_val, args.tau)  # [batch, trials, neurons]
+
         Sigma = Sigma + dSigma * args.dt
         mu = mu + dmu * args.dt
         mus.append(mu.clone())
@@ -228,7 +260,7 @@ if __name__ == '__main__':
             axes[b, 2].set_aspect('equal', adjustable='box')
         
     fig.tight_layout()
-    fig_path = f'ddpm/dynamical/u_history_N{args.neurons}_n{args.n}.png'
+    fig_path = f'ddpm/dynamical/logs/moment_pred/u_history_N{args.neurons}_n{args.n}.png'
     print(fig_path)
     plt.savefig(fig_path)
     plt.close()

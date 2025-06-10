@@ -1,13 +1,11 @@
 batch_size: 3
-# neurons: 16
-neurons: 8
-K: 512
-# timesteps: 300
-timesteps: 100
-tau: 0.05
+neurons: 2
+K: 2048
+duration: 1
+tau: 0.01
 dt: 0.001
-k: 0.5
-n: 1
+k: 1.0
+n: -1
 # h_scale: 6e-4    # FIXME: select systematically
 h_scale: 2e-3
 sigma2_xi: 0.1
