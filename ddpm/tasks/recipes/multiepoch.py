@@ -73,6 +73,7 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
     probe_tc_width,
     report_tc_width,
     vectorise_input: bool = True,
+    limit_training_timesteps: Optional[int] = None,
     **sample_kwargs
 ):
     task_variable_gen = SpikeAndSlabSwapProbabilityTaskVariableGenerator(
@@ -87,7 +88,7 @@ def delayed_probe_cue_vectoral_spike_and_slab_palimpsest(
         vectorise_input=vectorise_input,
     )
     sample_gen = VectoralEmbeddedExampleSampleGenerator(
-        sample_size=sample_size, **sample_kwargs
+        sample_size=sample_size, limit_training_timesteps=limit_training_timesteps, **sample_kwargs
     )
     return MultiEpochDiffusionTask(
         task_variable_gen=task_variable_gen,

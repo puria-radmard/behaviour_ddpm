@@ -83,7 +83,13 @@ sigma2x_schedule = sigma2x_schedule.to(device=device)
 
 task: MultiEpochDiffusionTask = getattr(tasks, task_name)(**task_config.dict)
 task.save_metadata(os.path.join(save_base, "task_metadata"))
-all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
+try:
+    all_individual_residual_mses = np.zeros([num_trials, task.sample_gen.limit_training_timesteps])
+    plotting_num_timesteps = task.sample_gen.limit_training_timesteps
+except:
+    all_individual_residual_mses = np.zeros([num_trials, num_timesteps])
+    plotting_num_timesteps = num_timesteps
+
 all_trial_type_trial_indices = {trial_type: [] for trial_type in task.task_variable_gen.trial_types}
 all_trial_type_trial_indices['all'] = []
 if len(task.task_variable_gen.trial_types) == 1:
@@ -264,7 +270,7 @@ for t in tqdm(range(num_trials)):
             prep_state_reg_axes = axes[0, 4], delay_activity_reg_axes = axes[0, 5],
             training_step = t, plotting_start = plotting_start,
             diffusion_cmap = kl_colors_scalarMap,
-            num_timesteps = num_timesteps, 
+            num_timesteps = plotting_num_timesteps, 
             all_individual_residual_mses = all_individual_residual_mses[all_trial_type_trial_indices['all']], 
             all_prep_state_losses = all_prep_state_losses, 
             all_delay_activity_losses = all_delay_activity_losses,
@@ -312,7 +318,7 @@ for t in tqdm(range(num_trials)):
                 zoomed_mean_mse_ax = axes[trial_type_top_row_idx+1, 6], 
                 training_step = t, 
                 plotting_start = plotting_start, 
-                num_timesteps = num_timesteps, 
+                num_timesteps = plotting_num_timesteps, 
                 diffusion_cmap = kl_colors_scalarMap, 
                 trial_type_name = test_trial_type,
                 all_individual_residual_mses = all_individual_residual_mses[all_trial_type_trial_indices[test_trial_type]]

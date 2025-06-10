@@ -101,6 +101,7 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         sample_radius: float,
         residual_in_behaviour_plane_only: bool,
         response_location_key: str = "report_features_cart",
+        limit_training_timesteps: Optional[int] = None,
         device="cuda",
     ) -> None:
 
@@ -108,6 +109,8 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         sample_space_size = 2
         self.sample_radius = sample_radius
         self.residual_in_behaviour_plane_only = residual_in_behaviour_plane_only
+
+        self.limit_training_timesteps = limit_training_timesteps
 
         if self.residual_in_behaviour_plane_only:
             raise Exception(
@@ -214,6 +217,14 @@ class VectoralEmbeddedExampleSampleGenerator(ExampleSampleGenerator):
         axes.add_patch(plt.Circle((0, 0), self.sample_radius, color="red", fill=False))
 
     def mse(self, epsilon_hat: _T, epsilon: _T):
+        """
+        Always assumes both of shape [..., T, D]
+
+        If self.limit_training_timesteps is not None, we only train on last limit_training_timesteps timesteps
+        """
+        if self.limit_training_timesteps is not None:
+            epsilon_hat = epsilon_hat[...,-self.limit_training_timesteps:,:]
+            epsilon = epsilon[...,-self.limit_training_timesteps:,:]
         if self.residual_in_behaviour_plane_only:
             epsilon = epsilon @ self.linking_matrix_mse.T
             epsilon_hat = epsilon_hat @ self.linking_matrix_mse.T
