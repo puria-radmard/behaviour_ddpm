@@ -92,12 +92,12 @@ if __name__ == '__main__':
         axes[2].plot(true_posts)
         axes[2].set_xlabel('Epoch')
         axes[2].set_ylabel('$\log q(W^*)$')
-        fig.savefig('ddpm/dynamical/vi_training.png')
+        fig.savefig('ddpm/dynamical/logs/vi_fitting/vi_training.png')
         plt.close(fig)
 
         # Save model parameters
-        torch.save(target_dist.state_dict(), 'ddpm/dynamical/target_dist.mdl')
-        torch.save(variational_dist.state_dict(), 'ddpm/dynamical/variational_dist.mdl')
+        torch.save(target_dist.state_dict(), 'ddpm/dynamical/logs/vi_fitting/target_dist.mdl')
+        torch.save(variational_dist.state_dict(), 'ddpm/dynamical/logs/vi_fitting/variational_dist.mdl')
 
         if epoch % 10 == 0:
 
@@ -193,7 +193,7 @@ if __name__ == '__main__':
                         axes[b, 2].set_aspect('equal')
 
                 # fig.tight_layout()
-                fig.savefig('ddpm/dynamical/vi_training_examples.png')
+                fig.savefig('ddpm/dynamical/logs/vi_fitting/vi_training_examples.png')
                 plt.close(fig)
 
     

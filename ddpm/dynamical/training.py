@@ -174,7 +174,10 @@ def working_memory_task(batch_size: int = 4, num_mems: int = 8,
 
 
 if __name__ == '__main__':
-    # Set random seed for reproducibility
+
+    from purias_utils.util.arguments_yaml import ConfigNamepace
+    args = ConfigNamepace.from_yaml_path('ddpm/dynamical/args_trained.yaml')
+
     smoothing_alpha = 0.4
     
     # Parameters
@@ -182,34 +185,33 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
     
     # Task parameters
-    num_mems=5
+    num_mems=args.num_mems
     
     # Network and training parameters
-    neurons = 32
+    neurons = args.neurons
     num_in_dims = num_mems + 1
     num_out_dims = 2
-    batch_size = 64
-    time_steps = 1000
+    batch_size = args.batch_size
     trials = 1
-    epochs = 10000000
+    epochs = args.num_epochs
     
     # Dynamics parameters
-    dt = 0.001
-    tau = 0.1
-    k = 1.0
-    n = 1
-    noise_scale = 0.01
+    dt = args.dt
+    tau = args.tau
+    k = args.k
+    n = args.n
+    noise_scale = args.sigma2_xi
     lr = 0.005
     print(f"Training network: {neurons} neurons, {num_in_dims}→{num_out_dims} dims")
-    print(f"Task: {batch_size} batches, {time_steps} steps, {trials} trials")
+    print(f"Task: {batch_size} batches, {trials} trials")
     
     # Initialize network and optimizer ONCE
     net = DynamicalNetwork(neurons, num_in_dims, num_out_dims).to(device)
     optimizer = optim.Adam(net.parameters(), lr=lr)
     Sigma_xi = torch.eye(neurons, device=device) * noise_scale
 
-    net.load_state_dict(torch.load('ddpm/dynamical/net.mdl'))
-    optimizer.load_state_dict(torch.load('ddpm/dynamical/opt.mdl'))
+    net.load_state_dict(torch.load('ddpm/dynamical/logs/training/net.mdl'))
+    optimizer.load_state_dict(torch.load('ddpm/dynamical/logs/training/opt.mdl'))
     
     # Training loop
     losses = []
@@ -275,11 +277,11 @@ if __name__ == '__main__':
                 axes[b, 2].grid(True, alpha=0.3)
                 
             plt.tight_layout()
-            plt.savefig('ddpm/dynamical/flip_flop_examples.png', dpi=150, bbox_inches='tight')
+            plt.savefig('ddpm/dynamical/logs/training/flip_flop_examples.png', dpi=150, bbox_inches='tight')
             plt.close()
 
-            torch.save(net.state_dict(), 'ddpm/dynamical/net.mdl')
-            torch.save(optimizer.state_dict(), 'ddpm/dynamical/opt.mdl')
+            torch.save(net.state_dict(), 'ddpm/dynamical/logs/training/net.mdl')
+            torch.save(optimizer.state_dict(), 'ddpm/dynamical/logs/training/opt.mdl')
     
         # Plot training curve
         plt.figure(figsize=(10, 6))
@@ -290,7 +292,7 @@ if __name__ == '__main__':
         plt.ylabel('MSE Loss')
         plt.yscale('log')
         plt.grid(True)
-        plt.savefig('ddpm/dynamical/flip_flop_training_loss.png', dpi=150, bbox_inches='tight')
+        plt.savefig('ddpm/dynamical/logs/training/flip_flop_training_loss.png', dpi=150, bbox_inches='tight')
         plt.close()
         
     # Print learned weight matrix properties

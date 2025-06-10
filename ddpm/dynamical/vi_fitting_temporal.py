@@ -92,12 +92,12 @@ if __name__ == '__main__':
         axes[2].plot(true_posts)
         axes[2].set_xlabel('Epoch')
         axes[2].set_ylabel('$\log q(W^*)$')
-        fig.savefig('ddpm/dynamical/vi_training_temporal.png')
+        fig.savefig('ddpm/dynamical/logs/vi_fitting_temporal/vi_training_temporal.png')
         plt.close(fig)
 
         # Save model parameters
-        torch.save(target_dist.state_dict(), 'ddpm/dynamical/target_dist_temporal.mdl')
-        torch.save(variational_dist.state_dict(), 'ddpm/dynamical/variational_dist_temporal.mdl')
+        torch.save(target_dist.state_dict(), 'ddpm/dynamical/logs/vi_fitting_temporal/target_dist_temporal.mdl')
+        torch.save(variational_dist.state_dict(), 'ddpm/dynamical/logs/vi_fitting_temporal/variational_dist_temporal.mdl')
 
         if epoch % 10 == 0:
 
@@ -197,7 +197,7 @@ if __name__ == '__main__':
                         axes[b, 2].sharex(axes[b-1, 2])
 
                 # fig.tight_layout()
-                fig.savefig('ddpm/dynamical/vi_training_examples_temporal.png')
+                fig.savefig('ddpm/dynamical/logs/vi_fitting_temporal/vi_training_examples_temporal.png')
                 plt.close(fig)
 
     
