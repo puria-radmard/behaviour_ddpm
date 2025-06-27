@@ -23,8 +23,8 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
     def __init__(self, *_, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, noise_scaler: float | Literal['nat'], train_as_rnn: bool, device="cuda", **kwargs) -> None:
         
         super().__init__(
-            num_prep_steps=None,
-            network_input_during_diffusion=None,
+            # num_prep_steps=None,
+            # network_input_during_diffusion=None,
             seperate_output_neurons=seperate_output_neurons,
             stabilise_nullspace=stabilise_nullspace,
             sample_ambient_dim=sample_ambient_dim,
@@ -36,7 +36,7 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
             device=device
         )
 
-        assert self.stabilise_nullspace, "LinearSubspaceTeacherForcedDDPMReverseProcess requires stabilise_nullspace=True for full awareness!"
+        assert self.stabilise_nullspace, "LinearSubspaceTeacherForcedDDPMReverseProcess requires stabilise_nullspace=True for full awareness! It will be removed later"
         del self.stabilise_nullspace    # Should not be used!
         
         self.train_as_rnn = train_as_rnn
@@ -78,7 +78,7 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
     
     def noise(self, x_0: _T) -> Dict[str, _T | int]:
         """
-        Target for the transition ernel is based on the q_posterior mean:
+        Target for the transition kernel is based on the q_posterior mean:
 
             posterior_mean = mu_q = (x_t - \gamma_t \epsilon_t)
             \gamma_t = \beta_t / \sqrt{1-\bar\alpha_t}

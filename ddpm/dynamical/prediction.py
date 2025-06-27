@@ -1,7 +1,6 @@
 import torch
-from torch import optim, nn
-from tqdm import tqdm
-from ddpm.dynamical.training import working_memory_task, DynamicalNetwork
+import math
+from ddpm.dynamical.training import DynamicalNetwork, working_memory_task
 import matplotlib.pyplot as plt
 
 
@@ -40,7 +39,6 @@ if __name__ == '__main__':
 
         # Generate fresh batch of task data
         h_sequence, r_target = working_memory_task(
-            batch_size=batch_size,
             num_mems=num_mems,
             device=device
         )

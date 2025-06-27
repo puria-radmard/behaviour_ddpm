@@ -139,7 +139,7 @@ def working_memory_task(batch_size: int = 4, num_mems: int = 8,
     
     for batch_idx in range(batch_size):
         # Randomly select which memory item to present (1 to num_mems-1)
-        stim_idx = torch.randint(1, num_mems, (1,)).item()
+        stim_idx = torch.randint(0, num_mems, (1,)).item()
         
         # Randomly select delay duration
         delay_duration = torch.randint(delay_min, delay_max + 1, (1,)).item()

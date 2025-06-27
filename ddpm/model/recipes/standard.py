@@ -11,7 +11,6 @@ def standard_vectoral(
     sigma2x_schedule,
     device,
     residual_model_kwargs,
-    ddpm_model_kwargs,
 ):
     assert len(sensory_shape) == len(sample_shape) == 1
     input_model = InputModelBlock(sensory_shape, sensory_shape[0], device=device)

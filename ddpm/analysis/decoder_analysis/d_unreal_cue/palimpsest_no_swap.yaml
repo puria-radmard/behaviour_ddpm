@@ -1,0 +1,4 @@
+run_name: '../ddpm_conjuctions_investigation_20250317/run_e3_probe_cued_factorised_palimpsest_no_swap_long_diff_and_del_0'
+num_cue_gridpoints: 10
+num_samples: 1024
+save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/d_unreal_cue'

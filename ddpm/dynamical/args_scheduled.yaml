@@ -1,19 +1,22 @@
-batch_size: 1
 neurons: 32
 load_path: ddpm/dynamical/logs/training/net.mdl
 
-K: 2048
-duration: 0.01
-duration_no_stim: 0.1
+batch_size: 8
+K: 512
+
+duration: 1.0
+duration_no_stim: 0.0
 tau: 0.1
 dt: 0.001
 k: 1.0
 n: 1
 # h_scale: 5e-2
-h_scale: 20.0
+h_scale: 1.0
 
 sigma2_xi_preschedule: 0.1
 sigma2_xi_start: 0.1
-sigma2_xi_end: 0.1
+sigma2_xi_end: 0.01
 
 num_epochs: 100000
+
+model_type: ddpm

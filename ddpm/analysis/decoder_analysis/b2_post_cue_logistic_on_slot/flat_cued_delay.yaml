@@ -1,0 +1,5 @@
+run_name: 'run_b2_probe_cued_with_probe_flat_swap_fewer_variable_delay_0'
+ctd_batch_size: 1024 
+num_opt_steps: 5000 
+save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/b2_post_cue_logistic_on_slot'
+delay_period: true

@@ -1,7 +1,0 @@
-run_name: 'run_b3_probe_cued_with_probe_cyclical_swap_fewer_variable_delay_0'
-ctd_batch_size: 1024 
-num_opt_steps: 5000 
-decoder_type: 'linear'
-save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/b_post_cue_linear_report_recovery'
-decode_cued: true
-limit_to_further: false

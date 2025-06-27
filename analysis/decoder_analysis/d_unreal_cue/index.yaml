@@ -1,4 +1,0 @@
-run_name: '../ddpm_conjuctions_investigation_20250317/run_d_alt4_index_cued_with_swap_variable_delay_long_diff_0'
-num_cue_gridpoints: 0
-num_samples: 1024
-save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/d_unreal_cue'

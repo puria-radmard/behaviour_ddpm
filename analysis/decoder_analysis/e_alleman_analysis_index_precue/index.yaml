@@ -1,6 +1,0 @@
-run_name: 'run_a3_index_cued_diffusion_with_swap_0'
-num_cue_gridpoints: 0
-ctd_batch_size: 1024
-num_opt_steps: 50_000
-save_base: '/homes/pr450/repos/research_projects/sampling_ddpm/results_link_sampler/analysis/decoder_analysis/e_alleman_analysis_index'
-cued_feature: index

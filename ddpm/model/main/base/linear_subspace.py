@@ -156,7 +156,7 @@ class LinearSubspaceTeacherForcedDDPMReverseProcess(
             initial_state = (
                 torch.randn(
                     *batch_shape,
-                    *self.sample_ambient_dima,
+                    *self.sample_ambient_dims,
                     device=self.sigma2xt_schedule.device,
                 )
                 * self.base_std

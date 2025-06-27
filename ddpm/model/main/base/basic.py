@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch import Tensor as _T
 
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 
 from abc import ABC, abstractmethod
 
@@ -12,7 +12,7 @@ from ddpm.model.embedding_reprs import TimeEmbeddingBlock
 from ddpm.model.transition import VectoralResidualModel, UNetResidualModel
 from ddpm.model.input import InputModelBlock
 
-from ddpm.tasks.distribution import DistributionInformation
+# from ddpm.tasks.distribution import DistributionInformation
 
 from typing import List, Mapping, Any
 

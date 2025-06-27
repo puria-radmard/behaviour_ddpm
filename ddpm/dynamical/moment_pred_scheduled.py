@@ -22,9 +22,6 @@ if __name__ == '__main__':
         output_weights = sd['out_weight.weight'].cpu()
         output_bias = sd['out_weight.bias'].cpu()
 
-        input_weights = sd['in_weight.weight'].cpu()
-        input_bias = sd['in_weight.bias'].cpu()
-
     else:
         batch_size = args.batch_size
         num_neurons = args.neurons
