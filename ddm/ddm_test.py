@@ -1,16 +1,20 @@
 from matplotlib import pyplot as plt
 
+import os
 import math
 import torch
 
+from purias_utils.util.logging import configure_logging_paths
+
 from ddpm.model.input import InputModelBlock
-from ddm.rt_ddpm import ReactionTimeDDPM
 from ddpm.model.transition.vectoral import VectoralResidualModel
 
+from ddm.rt_ddpm import ReactionTimeDDPM
 from ddm.ddm import generate_correct_answers, generate_sensory_batch, simulate_ddm
 
 from tqdm import tqdm
 
+torch.autograd.set_detect_anomaly(True)
 
 # DDM/DDPM params
 num_trials = int(1e6)
@@ -20,21 +24,23 @@ forward_sigma = math.sqrt(dt) * 0.1
 batch_size = 4
 num_ddm_samples = 1024
 boundary = 1.0
+ddpm_sigma_scaler = 5.0
 
 
 sigma2x_schedule = torch.linspace(forward_sigma, forward_sigma, max_steps)
 
-
+_, savepath, _ = configure_logging_paths('results_link_sampler_ext/ddm_recovery/run', [])
 
 
 sensory_shape = [1]
 sample_shape = [1]
 recurrence_hidden_layers = [5]
-time_embedding_size = 0
+time_embedding_size = 32
 sigma2x_schedule = sigma2x_schedule
 device = 'cuda'
 residual_model_kwargs = {
-    'nonlin_first': False
+    'nonlin_first': False,
+    'include_time': True
 }
 
 assert len(sensory_shape) == len(sample_shape) == 1
@@ -47,9 +53,8 @@ residual_model = VectoralResidualModel(
     **residual_model_kwargs
 )
 
-# FIXME: this should be 'direct' parameterisation, rather than epsilon parameterisation!
 ddpm_model = ReactionTimeDDPM(
-    'nat',
+    ddpm_sigma_scaler,
     sample_shape,
     sigma2x_schedule,
     residual_model,
@@ -59,11 +64,10 @@ ddpm_model = ReactionTimeDDPM(
     device,
 )
 
+ddm_sigma = ddpm_model.noise_scaler_schedule[-1].cpu()
 
-backward_sigma = ddpm_model.noise_scaler_schedule[-1].cpu() * 5.0
 
-
-lr = 1e-4
+lr = 1e-2
 optim = torch.optim.Adam(ddpm_model.parameters(), lr=lr)
 losses = []
 
@@ -96,7 +100,7 @@ sch_axes[0].legend()
 sch_axes[1].set_title("Time embeddings")
 sch_axes[1].imshow(ddpm_model.time_embeddings.time_embs.detach().cpu().numpy().T)
 
-sch_fig.savefig('ddm/schedule.png')
+sch_fig.savefig(os.path.join(savepath, 'schedule.png'))
 
 
 for t in tqdm(range(num_trials)):
@@ -112,7 +116,7 @@ for t in tqdm(range(num_trials)):
     
     # Run simulation
     trajectories, choices, reaction_times, completed = simulate_ddm(
-        sensory_inputs, max_steps, dt, backward_sigma, boundary
+        sensory_inputs, max_steps, dt, ddm_sigma, boundary, use_cum_sum = True
     )
 
 
@@ -121,7 +125,7 @@ for t in tqdm(range(num_trials)):
         rts = reaction_times.unsqueeze(-1).cuda()
     )
 
-    if t % 100 == 0:
+    if t % 10 == 0:
 
         # DDM generative process
         fig_traj, (axes_traj_ddm, axes_traj_noising, axes_traj_generative) = plt.subplots(3, 4, figsize = (10, 10), sharex=True)
@@ -162,25 +166,18 @@ for t in tqdm(range(num_trials)):
             axes_traj_generative[b].axhline(y=-boundary, color='b', linestyle='--', label='Lower boundary')
             axes_traj_generative[b].axhline(y=0, color='k', linestyle='-', alpha=0.3)    
             axes_traj_generative[b].set_xlim(0, time_axis[-1].item())
-            axes_traj_generative[b].set_ylim(-1.0, 1.0)
+            # axes_traj_generative[b].set_ylim(-1.0, 1.0)
             axes_traj_generative[b].set_xlabel('Time (s)')
             axes_traj_generative[b].set_ylabel('Evidence')
             axes_traj_generative[b].grid(True, alpha=0.3)
             axes_traj_generative[b].set_title('DDPM generated trajectories')
 
 
-        fig_traj.savefig('ddm/trajectories')
+        fig_traj.savefig(os.path.join(savepath, 'trajectories.png'))
+
+        torch.save(ddpm_model.state_dict(), os.path.join(savepath, 'ddpm_model.pt'))
+        torch.save(optim.state_dict(), os.path.join(savepath, 'optim.pt'))
     
-        plt.figure(figsize=(8, 4))
-        plt.plot(losses, label='Training Loss')
-        plt.xlabel('Iteration')
-        plt.ylabel('Loss')
-        plt.title('DDPM Training Loss')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        plt.savefig('ddm/losses.png')
-        plt.close()
 
 
     epsilon_hat_dict = ddpm_model.residual(
@@ -188,8 +185,22 @@ for t in tqdm(range(num_trials)):
         network_input=sensory_inputs.unsqueeze(-1),
     )
 
-    mse = torch.square(epsilon_hat_dict['epsilon_hat'] - noised_decisions_dict['kernel_target'])
-    loss = mse[noised_decisions_dict['relevance_mask'].bool()].mean()
+    mask = noised_decisions_dict['relevance_mask'].bool()
+    mse = torch.square(epsilon_hat_dict['epsilon_hat'][mask] - noised_decisions_dict['kernel_target'][mask])
+    loss = mse.mean()
+
+    losses.append(loss.item())
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(losses, label='Training Loss')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.title('DDPM Training Loss')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(savepath, 'losses.png'))
+    plt.close('all')
 
     # Optimization step
     optim.zero_grad()

@@ -23,8 +23,8 @@ class LinearSubspaceTeacherForcedHVAEReverseProcess(
     def __init__(self, *_, seperate_output_neurons: bool, stabilise_nullspace: bool, sample_ambient_dim: int, sample_shape: List[int], sigma2xt_schedule: _T, residual_model: VectoralResidualModel, input_model: InputModelBlock, time_embedding_size: int, noise_scaler: float | Literal['nat'], train_as_rnn: bool, device="cuda", **kwargs) -> None:
         
         super().__init__(
-            # num_prep_steps=None,
-            # network_input_during_diffusion=None,
+            num_prep_steps=None,
+            network_input_during_diffusion=None,
             seperate_output_neurons=seperate_output_neurons,
             stabilise_nullspace=stabilise_nullspace,
             sample_ambient_dim=sample_ambient_dim,

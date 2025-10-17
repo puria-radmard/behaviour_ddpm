@@ -38,7 +38,7 @@ class VectoralResidualModel(nn.Module):
         total_input_size = self.state_space_size + self.input_size
         if include_time:
             total_input_size = total_input_size + self.time_embedding_size
-        recurrence_layers.extend([nn.Linear(total_input_size,all_layer_sizes[0]), nn.Softplus()])  # 1 to include time also!
+        recurrence_layers.extend([nn.Linear(total_input_size, all_layer_sizes[0]), nn.Softplus()])  # 1 to include time also!
         for i, op_s in enumerate(all_layer_sizes[1:]):
             recurrence_layers.extend(
                 [nn.Linear(all_layer_sizes[i], op_s), nn.Softplus()]

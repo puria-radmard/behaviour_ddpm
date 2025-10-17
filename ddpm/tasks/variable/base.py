@@ -174,9 +174,7 @@ class FixedProvidedSwapProbabilityTaskVariableGenerator(
             self.num_items,
         )
         return {
-            "swap_probabilities": self.probability_vector.unsqueeze(0).expand(
-                batch_size, 1
-            )
+            "swap_probabilities": self.probability_vector.unsqueeze(0).expand(batch_size, len(self.probability_vector))
         }
 
     def display_task_variables(

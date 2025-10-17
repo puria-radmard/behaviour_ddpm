@@ -82,7 +82,7 @@ task.save_metadata(os.path.join(save_base, "task_metadata"))
 # Set up model
 residual_model_kwargs = model_config.dict.pop("residual_model_kwargs").dict
 ddpm_model_kwargs = model_config.dict.pop("ddpm_model_kwargs").dict
-ddpm_model, mse_key = getattr(model, model_name)(
+ddpm_model, mse_key, mse_key_target = getattr(model, model_name)(
     **model_config.dict,
     residual_model_kwargs=residual_model_kwargs,
     ddpm_model_kwargs=ddpm_model_kwargs,
@@ -171,7 +171,7 @@ for t in tqdm(range(num_trials)):
         network_input=trial_information.network_inputs,
     )
     residual_mse = task.sample_gen.mse(
-        epsilon_hat_dict[mse_key], forward_process["epsilon"]
+        epsilon_hat_dict[mse_key], forward_process[mse_key_target]
     )  # [batch, samples, time]
 
     total_loss = residual_mse.mean()
@@ -228,23 +228,23 @@ for t in tqdm(range(num_trials)):
         )
 
         task.sample_gen.display_samples(
-            trial_information.sample_information, axes[0, 0]
+            trial_information.sample_information, axes[0, 0], batch_idx = 0
         )
-        task.sample_gen.display_samples(novel_samples_dict["samples"], axes[0, 1])
+        task.sample_gen.display_samples(novel_samples_dict["samples"], axes[0, 1], batch_idx = 0)
         task.sample_gen.display_samples(
-            forward_process["x_t"][:, :, -1, ...], axes[1, 2]
+            forward_process["x_t"][:, :, -1, ...], axes[1, 2], batch_idx = 0
         )
 
         if did_prep:
             task.sample_gen.display_samples(
-                novel_samples_dict["postprep_base_samples"].detach().cpu(), axes[1, 2]
+                novel_samples_dict["postprep_base_samples"].detach().cpu(), axes[1, 2], batch_idx = 0
             )
         task.sample_gen.display_early_x0_pred_timeseries(
-            novel_samples_dict["early_x0_preds"], axes[0, 2], kl_colors_scalarMap
+            novel_samples_dict["early_x0_preds"], axes[0, 2], kl_colors_scalarMap, batch_idx = 0
         )
 
         task.task_variable_gen.display_task_variables(
-            trial_information.task_variable_information, axes[1, 0], axes[1, 1]
+            trial_information.task_variable_information, axes[1, 0], axes[1, 1], batch_idx = 0
         )
 
         if doing_teacher_forcing and 'parallel' not in task_name:
@@ -272,6 +272,7 @@ for t in tqdm(range(num_trials)):
                 novel_samples_dict["epsilon_hat"].detach().cpu(),
                 axes[1, 3],
                 kl_colors_scalarMap,
+                batch_idx = 0
             )
             axes[1, 3].set_title("$\hat\epsilon$ during generation")
 

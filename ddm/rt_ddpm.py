@@ -88,8 +88,8 @@ class ReactionTimeDDPM(OneShotDDPMReverseProcess):
         relevance_mask[:, :, :, 0] = mask.float()
 
         # Initialize with NaN
-        reshaped_a_t_schedule_rescaled = torch.full_like(relevance_mask, torch.nan)
-        reshaped_root_b_t_schedule_rescaled = torch.full_like(relevance_mask, torch.nan)
+        reshaped_a_t_schedule_rescaled = torch.full_like(relevance_mask, 0.0)
+        reshaped_root_b_t_schedule_rescaled = torch.full_like(relevance_mask, 0.0)
 
         # Create range tensor for indexing
         range_tensor = torch.arange(5000, device=relevance_mask.device)  # [5000]

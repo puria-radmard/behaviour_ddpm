@@ -47,7 +47,7 @@ def generate_sensory_batch(correct_answers, mu):
 
 
 def simulate_ddm(sensory_inputs, max_steps, dt=0.001, 
-                 sigma=1.0, boundary=1.0, starting_point=0.0):
+                 sigma=1.0, boundary=1.0, starting_point=0.0, *_, use_cum_sum: bool = False):
     """
     Simulate drift diffusion model trajectories.
     
@@ -67,6 +67,8 @@ def simulate_ddm(sensory_inputs, max_steps, dt=0.001,
     """
     batch_size, n_trials = sensory_inputs.shape
     device = sensory_inputs.device
+
+
     
     # Initialize trajectories
     trajectories = torch.zeros(batch_size, n_trials, max_steps, device=device)
@@ -80,38 +82,92 @@ def simulate_ddm(sensory_inputs, max_steps, dt=0.001,
     # Scaling factors for discrete-time simulation
     drift_scaled = sensory_inputs * dt
     noise_scaled = sigma * torch.sqrt(torch.tensor(dt, device=device))
-    
-    # Simulate each time step
-    for t in range(1, max_steps):
-        # Only update trials that haven't completed
-        active_mask = ~completed
+
+
+    if use_cum_sum:
+        # Vectorized simulation using cumulative sum
+        # Generate all noise at once
+        all_noise = torch.randn(batch_size, n_trials, max_steps-1, device=device) * noise_scaled
         
-        if not active_mask.any():
-            break
+        # Create time indices for drift contribution
+        time_indices = torch.arange(1, max_steps, device=device).float() * dt
+        drift_contribution = sensory_inputs.unsqueeze(-1) * time_indices
+        
+        # Compute full trajectories using cumsum
+        noise_contribution = torch.cumsum(all_noise, dim=2)
+        trajectories[:, :, 1:] = starting_point + drift_contribution + noise_contribution
+        
+        # Find boundary crossings
+        upper_crossings = trajectories >= boundary
+        lower_crossings = trajectories <= -boundary
+        any_crossing = upper_crossings | lower_crossings
+        
+        # Find first crossing time for each trial (argmax returns 0 if no True values)
+        first_crossing_times = torch.argmax(any_crossing.float(), dim=2)
+        
+        # Check if any crossing actually occurred
+        has_crossing = any_crossing.any(dim=2)
+        
+        # For trials with no crossing, set to max_steps-1
+        first_crossing_times[~has_crossing] = max_steps - 1
+        
+        # Get choices based on the value at first crossing time
+        batch_idx = torch.arange(batch_size, device=device).unsqueeze(1)
+        trial_idx = torch.arange(n_trials, device=device).unsqueeze(0)
+        crossing_values = trajectories[batch_idx, trial_idx, first_crossing_times]
+        
+        choices = torch.where(crossing_values >= boundary, 1, -1)
+        choices[~has_crossing] = 0  # No decision for uncompleted trials
+        
+        # Set reaction times
+        reaction_times = first_crossing_times.float() * dt
+        reaction_times[~has_crossing] = max_steps * dt
+        
+        # Clamp trajectories after boundary crossing
+        time_grid = torch.arange(max_steps, device=device).view(1, 1, -1)
+        after_crossing = time_grid > first_crossing_times.unsqueeze(-1)
+        
+        # Set post-crossing values to the boundary that was hit
+        hit_upper_boundary = (crossing_values >= boundary).unsqueeze(-1) & after_crossing
+        hit_lower_boundary = (crossing_values <= -boundary).unsqueeze(-1) & after_crossing
+        
+        trajectories[hit_upper_boundary] = boundary
+        trajectories[hit_lower_boundary] = -boundary
+        
+        completed = has_crossing
+        
+    else:
+        # Simulate each time step
+        for t in range(1, max_steps):
+            # Only update trials that haven't completed
+            active_mask = ~completed
             
-        # Generate noise
-        noise = torch.randn(batch_size, n_trials, device=device) * noise_scaled
+            if not active_mask.any():
+                break
+                
+            # Generate noise
+            noise = torch.randn(batch_size, n_trials, device=device) * noise_scaled
+            
+            # Update evidence for active trials
+            trajectories[:, :, t] = trajectories[:, :, t-1].clone()
+            trajectories[:, :, t][active_mask] += drift_scaled[active_mask] + noise[active_mask]
+            
+            # Check boundary crossings
+            hit_upper = (trajectories[:, :, t] >= boundary) & active_mask
+            hit_lower = (trajectories[:, :, t] <= -boundary) & active_mask
+            
+            # Record choices and RTs for newly completed trials
+            newly_completed = hit_upper | hit_lower
+            choices[hit_upper] = 1
+            choices[hit_lower] = -1
+            reaction_times[newly_completed] = t * dt
+            
+            # Update completed mask
+            completed |= newly_completed
+            
+            # Clamp trajectories at boundaries for completed trials
+            trajectories[:, :, t] = torch.clamp(trajectories[:, :, t], -boundary, boundary)
         
-        # Update evidence for active trials
-        trajectories[:, :, t] = trajectories[:, :, t-1].clone()
-        trajectories[:, :, t][active_mask] += drift_scaled[active_mask] + noise[active_mask]
-        
-        # Check boundary crossings
-        hit_upper = (trajectories[:, :, t] >= boundary) & active_mask
-        hit_lower = (trajectories[:, :, t] <= -boundary) & active_mask
-        
-        # Record choices and RTs for newly completed trials
-        newly_completed = hit_upper | hit_lower
-        choices[hit_upper] = 1
-        choices[hit_lower] = -1
-        reaction_times[newly_completed] = t * dt
-        
-        # Update completed mask
-        completed |= newly_completed
-        
-        # Clamp trajectories at boundaries for completed trials
-        trajectories[:, :, t] = torch.clamp(trajectories[:, :, t], -boundary, boundary)
-    
     return trajectories, choices, reaction_times, completed
 
 
@@ -280,3 +336,5 @@ if __name__ == "__main__":
     
     # Create visualization
     plot_ddm_results(mu_values, trajectories, results, dt, boundary, save_path='ddm')
+
+    
